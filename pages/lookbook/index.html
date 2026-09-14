@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Savage's Reply · 输出画廊</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Noto+Serif+SC:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="silk-fallback" aria-hidden="true">
+      <div class="silk-layer silk-a"></div>
+      <div class="silk-layer silk-b"></div>
+    </div>
+    <img class="silk-anim" src="./assets/silk-anim.webp" alt="" aria-hidden="true" />
+
+    <main id="book" class="book">
+      <header class="masthead">
+        <div class="shell masthead-row">
+          <span class="wordmark">Savage's Reply</span>
+          <p class="kicker">Output Atelier · 输出画廊</p>
+        </div>
+      </header>
+
+      <section class="hero" id="top">
+        <div class="shell">
+          <p class="kicker reveal">Bot Output Atelier</p>
+          <h1 class="hero-title reveal">让回复<br />像丝绸一样落下</h1>
+          <p class="lede reveal">
+            分段连发、打字节奏、完整性保护与出口安检。<br />
+            这是 AstrBot 发送前的最后一公里。
+          </p>
+          <p class="scroll-cue kicker">Scroll · 向下滚动</p>
+        </div>
+      </section>
+
+      <section class="gallery" id="gallery">
+        <div class="shell gallery-head">
+          <p class="kicker">Lookbook · 功能画册</p>
+          <p class="gallery-count">
+            <span id="frame-now">01</span>
+            <span class="count-sep">/</span>
+            <span id="frame-total">05</span>
+          </p>
+        </div>
+        <div
+          class="strip"
+          id="strip"
+          tabindex="0"
+          aria-label="功能画册，可左右翻阅"
+        ></div>
+        <p class="strip-hint kicker shell">滚轮翻阅 · 帧角翻阅详情</p>
+      </section>
+    </main>
+
+    <div id="sheet" class="sheet" hidden>
+      <div
+        class="sheet-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sheet-title"
+      >
+        <button id="sheet-close" class="sheet-close" type="button">
+          关闭 CLOSE
+        </button>
+        <div class="sheet-grid">
+          <aside class="sheet-plate" id="sheet-plate">
+            <p class="kicker" id="sheet-no">01</p>
+            <h2 class="plate-title" id="sheet-title">分段连发</h2>
+            <p class="plate-en" id="sheet-en">Segmentation</p>
+            <div class="plate-rule" aria-hidden="true"></div>
+            <p class="plate-index" id="sheet-index">01 / 05</p>
+          </aside>
+          <div class="sheet-body">
+            <p class="lede" id="sheet-desc"></p>
+            <ul class="points" id="sheet-points"></ul>
+            <div class="switches" id="sheet-switches"></div>
+            <dl class="facts" id="sheet-facts"></dl>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

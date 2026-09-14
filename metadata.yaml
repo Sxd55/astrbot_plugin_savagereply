@@ -1,0 +1,9 @@
+name: astrbot_plugin_savagereply
+display_name: "Savage's Reply"
+short_desc: 发送前人味化：智能分段连发 + 打字延迟；代码块、表格、长文不拆。
+desc: 作用于发送前最后一公里。把 LLM 长回复按语义切成短句逐条发出并模拟打字节奏，让回复像真人聊天；同时保护代码块、表格、公式和超长正文，完整性优先，绝不因为拟人化丢内容。
+version: v0.3.0
+author: Sxd55
+repo: https://github.com/Sxd55/astrbot_plugin_savagereply
+logo: logo.png
+astrbot_version: ">=4.22.0"

@@ -1,0 +1,182 @@
+{
+  "enabled": {
+    "description": "总开关",
+    "type": "bool",
+    "hint": "开启后，LLM 长回复会被切成短句逐条发送。",
+    "default": true
+  },
+  "only_llm": {
+    "description": "仅处理 LLM 回复",
+    "type": "bool",
+    "hint": "开启后只对模型生成的回复分段，命令回复、提示等原样发送。",
+    "default": true
+  },
+  "platform_exclude": {
+    "description": "跳过的平台",
+    "type": "list",
+    "hint": "这些平台不支持或限制多条连发，回复原样发送。",
+    "default": ["qq_official", "qq_official_webhook", "weixin_official_account", "dingtalk"]
+  },
+  "session_blacklist": {
+    "description": "会话黑名单",
+    "type": "list",
+    "hint": "填 unified_msg_origin（如 群聊的 aiocqhttp:GroupMessage:123456）后，该会话不分段。留空不限制。",
+    "default": []
+  },
+  "min_total_chars": {
+    "description": "最短分段字数",
+    "type": "int",
+    "hint": "回复总字数低于该值不分段，短句原样发送。",
+    "default": 40
+  },
+  "max_total_chars": {
+    "description": "最长分段字数",
+    "type": "int",
+    "hint": "回复总字数高于该值不分段，整条完整发送，避免长文被拆碎。0=不限。",
+    "default": 600
+  },
+  "segment_min_chars": {
+    "description": "分段最短长度",
+    "type": "int",
+    "hint": "每一小段的目标最小字数，低于此长度不会主动切段。",
+    "default": 15
+  },
+  "segment_max_chars": {
+    "description": "分段最长长度",
+    "type": "int",
+    "hint": "每一小段的目标最大字数，超过后遇到标点就切。",
+    "default": 50
+  },
+  "segment_hard_max_chars": {
+    "description": "分段硬上限",
+    "type": "int",
+    "hint": "一直找不到标点时的弹性延伸上限，到达后强制执行物理切分。",
+    "default": 120
+  },
+  "max_segments": {
+    "description": "最大分段数",
+    "type": "int",
+    "hint": "超过该段数时，剩余内容合并进最后一段，防止刷屏。",
+    "default": 6
+  },
+  "short_tail_chars": {
+    "description": "短尾合并阈值",
+    "type": "int",
+    "hint": "最后一段少于该字数时并回上一段，避免出现“好的。”这种孤零零的尾巴。0=关闭。",
+    "default": 8
+  },
+  "keep_punct": {
+    "description": "保留句尾标点",
+    "type": "bool",
+    "hint": "关闭后每段末尾的句号、问号、感叹号会被去掉，更像随手聊天。",
+    "default": true
+  },
+  "delay_enabled": {
+    "description": "打字延迟",
+    "type": "bool",
+    "hint": "开启后，分段之间按字数等待，模拟真人打字节奏；关闭时分段直接连发。",
+    "default": true
+  },
+  "delay_base_seconds": {
+    "description": "打字基础延迟（秒）",
+    "type": "float",
+    "hint": "每段发送前的固定等待时间。",
+    "default": 0.4
+  },
+  "delay_per_char_seconds": {
+    "description": "每字打字时间（秒）",
+    "type": "float",
+    "hint": "模拟打字速度，约等于每字耗时。0.08 约合每秒 12 个字。",
+    "default": 0.08
+  },
+  "delay_punct_bonus_seconds": {
+    "description": "句末标点停顿（秒）",
+    "type": "float",
+    "hint": "分段以句号、问号等结尾时额外多等的思考停顿。",
+    "default": 0.25
+  },
+  "delay_jitter": {
+    "description": "延迟随机抖动",
+    "type": "float",
+    "hint": "0.2 表示延迟在 80% 到 120% 之间随机浮动，避免节奏机械。",
+    "default": 0.2
+  },
+  "delay_max_seconds": {
+    "description": "单条延迟上限（秒）",
+    "type": "float",
+    "hint": "避免某一段太长导致等待过久。",
+    "default": 4.0
+  },
+  "delay_total_max_seconds": {
+    "description": "总延迟上限（秒）",
+    "type": "float",
+    "hint": "整条回复所有分段等待时间的总和上限，超出后剩余分段直接连发。",
+    "default": 10.0
+  },
+  "typing_enabled": {
+    "description": "打字状态",
+    "type": "bool",
+    "hint": "私聊分段等待期间显示「对方正在输入」（仅 NapCat / aiocqhttp 私聊有效，群聊与其他平台自动跳过）。",
+    "default": true
+  },
+  "marker_enabled": {
+    "description": "模型端边界标记",
+    "type": "bool",
+    "hint": "每轮临时注入输出规范，让模型用 [[next]] 自己决定断句位置；不占用人格文件，模型不用则回落到本地分段。",
+    "default": true
+  },
+  "marker_prompt": {
+    "description": "边界标记规范文本",
+    "type": "string",
+    "hint": "留空使用内置默认；自定义时可用 {marker} 与 {limit} 两个占位符。",
+    "default": ""
+  },
+  "protect_code_block": {
+    "description": "保护代码块",
+    "type": "bool",
+    "hint": "回复包含 ``` 代码块时整条不分段，保证代码和说明完整。",
+    "default": true
+  },
+  "protect_table": {
+    "description": "保护表格",
+    "type": "bool",
+    "hint": "回复包含 Markdown 表格时整条不分段。",
+    "default": true
+  },
+  "protect_math": {
+    "description": "保护公式",
+    "type": "bool",
+    "hint": "回复包含 $$ 块级公式时整条不分段。",
+    "default": true
+  },
+  "debug_log": {
+    "description": "调试日志",
+    "type": "bool",
+    "hint": "在日志里输出分流原因、分段结果和延迟明细。",
+    "default": false
+  },
+  "verify_enabled": {
+    "description": "风险扫描",
+    "type": "bool",
+    "hint": "发送前用纯规则扫描可疑承诺、无出处统计和未提及链接，只记录不阻塞，零延迟。",
+    "default": false
+  },
+  "verify_log_only": {
+    "description": "风险扫描仅记录",
+    "type": "bool",
+    "hint": "开启时命中风险只写日志；关闭时会在回复末尾追加下面的不确定提示。",
+    "default": true
+  },
+  "verify_suffix_text": {
+    "description": "不确定提示后缀",
+    "type": "string",
+    "hint": "关闭“仅记录”后，命中风险时追加到回复末尾的提示语。",
+    "default": "（这条细节我不太确定，你用到时再核实一下）"
+  },
+  "verify_absolute_words": {
+    "description": "可疑承诺词表",
+    "type": "list",
+    "hint": "回复中出现这些词会被记录为高风险，可按需增删。",
+    "default": ["100%", "百分之百", "绝对能", "绝对会", "绝对不可能", "包治", "稳赚", "零风险", "保证成功", "保证有效"]
+  }
+}
