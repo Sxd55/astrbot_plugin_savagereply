@@ -9,6 +9,22 @@ from .config import ReplyOptions
 STRONG_TAIL = set("。？！?!…~～")
 
 
+def read_delay(options: ReplyOptions, rng: random.Random | None = None) -> float:
+    """发送第一条之前的「读消息 + 组织语言」停顿（不含打字时间）。
+
+    真人不会秒回；研究（CHI 2026 / IJHCI 2025）显示极短延迟反而被评价为"不用心"，
+    0.5–1.5 秒是聊天场景的舒适区。总预算由调用方统一管理。
+    """
+    if not options.delay_enabled:
+        return 0.0
+    low = max(0.0, options.read_delay_min_seconds)
+    high = max(low, options.read_delay_max_seconds)
+    if high <= 0:
+        return 0.0
+    rng = rng or random
+    return rng.uniform(low, high)
+
+
 def segment_delay(text: str, options: ReplyOptions, rng: random.Random | None = None) -> float:
     """计算发送下一段之前应等待的秒数（按下一段文本长度模拟打字）。
 

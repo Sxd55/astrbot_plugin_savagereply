@@ -86,6 +86,7 @@ class ReplyOptions:
     segment_hard_max_chars: int = 120
     max_segments: int = 6
     short_tail_chars: int = 8
+    paragraph_max_chars: int = 180
     keep_punct: bool = True
     delay_enabled: bool = True
     delay_base_seconds: float = 0.4
@@ -94,8 +95,11 @@ class ReplyOptions:
     delay_jitter: float = 0.2
     delay_max_seconds: float = 4.0
     delay_total_max_seconds: float = 10.0
+    read_delay_min_seconds: float = 0.5
+    read_delay_max_seconds: float = 1.5
     typing_enabled: bool = True
     marker_enabled: bool = True
+    force_non_streaming: bool = True
     marker_prompt: str = ""
     protect_code_block: bool = True
     protect_table: bool = True
@@ -121,6 +125,7 @@ class ReplyOptions:
             segment_hard_max_chars=_as_int(data.get("segment_hard_max_chars"), 120),
             max_segments=_as_int(data.get("max_segments"), 6),
             short_tail_chars=_as_int(data.get("short_tail_chars"), 8),
+            paragraph_max_chars=_as_int(data.get("paragraph_max_chars"), 180),
             keep_punct=_as_bool(data.get("keep_punct"), True),
             delay_enabled=_as_bool(data.get("delay_enabled"), True),
             delay_base_seconds=_as_float(data.get("delay_base_seconds"), 0.4),
@@ -129,8 +134,11 @@ class ReplyOptions:
             delay_jitter=_as_float(data.get("delay_jitter"), 0.2),
             delay_max_seconds=_as_float(data.get("delay_max_seconds"), 4.0),
             delay_total_max_seconds=_as_float(data.get("delay_total_max_seconds"), 10.0),
+            read_delay_min_seconds=_as_float(data.get("read_delay_min_seconds"), 0.5),
+            read_delay_max_seconds=_as_float(data.get("read_delay_max_seconds"), 1.5),
             typing_enabled=_as_bool(data.get("typing_enabled"), True),
             marker_enabled=_as_bool(data.get("marker_enabled"), True),
+            force_non_streaming=_as_bool(data.get("force_non_streaming"), True),
             marker_prompt=_as_str(data.get("marker_prompt"), ""),
             protect_code_block=_as_bool(data.get("protect_code_block"), True),
             protect_table=_as_bool(data.get("protect_table"), True),
@@ -155,6 +163,7 @@ class ReplyOptions:
         self.segment_hard_max_chars = max(self.segment_max_chars, self.segment_hard_max_chars)
         self.max_segments = max(1, self.max_segments)
         self.short_tail_chars = max(0, self.short_tail_chars)
+        self.paragraph_max_chars = max(40, self.paragraph_max_chars)
         self.min_total_chars = max(0, self.min_total_chars)
         self.max_total_chars = max(0, self.max_total_chars)
         self.delay_base_seconds = max(0.0, self.delay_base_seconds)
@@ -163,4 +172,6 @@ class ReplyOptions:
         self.delay_jitter = min(max(0.0, self.delay_jitter), 0.9)
         self.delay_max_seconds = max(0.0, self.delay_max_seconds)
         self.delay_total_max_seconds = max(0.0, self.delay_total_max_seconds)
+        self.read_delay_min_seconds = max(0.0, self.read_delay_min_seconds)
+        self.read_delay_max_seconds = max(self.read_delay_min_seconds, self.read_delay_max_seconds)
         return self

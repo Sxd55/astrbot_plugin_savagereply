@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from savagereply.config import ReplyOptions  # noqa: E402
 from savagereply.marker import build_marker_prompt, parse_marker  # noqa: E402
-from savagereply.pacing import segment_delay  # noqa: E402
+from savagereply.pacing import read_delay, segment_delay  # noqa: E402
 from savagereply.policy import MODE_BYPASS, MODE_SPLIT, decide, is_markdown_table  # noqa: E402
 from savagereply.segment import segments_from_marked, split_text  # noqa: E402
 from savagereply.typing_status import set_input_status, should_show_typing  # noqa: E402
@@ -86,7 +86,14 @@ class PolicyTest(unittest.TestCase):
     def test_too_long_bypass(self):
         options = opts(max_total_chars=50)
         decision = decide("好。" * 40, options)
+        self.assertEqual(decision.reason, "long")
+        self.assertEqual(decision.mode, MODE_SPLIT)
+
+    def test_way_too_long_still_bypass(self):
+        options = opts(max_total_chars=50)
+        decision = decide("好。" * 300, options)
         self.assertEqual(decision.reason, "too_long")
+        self.assertEqual(decision.mode, MODE_BYPASS)
 
     def test_too_short_bypass(self):
         options = opts(min_total_chars=10)
@@ -125,7 +132,7 @@ class SegmentTest(unittest.TestCase):
         self.assertEqual(len(segments), 3)
         self.assertEqual(
             segments[-1],
-            "这是第三句话内容。这是第四句话内容。",
+            "这是第三句话内容。\n这是第四句话内容。",
         )
 
     def test_keep_punct_false(self):
@@ -186,7 +193,8 @@ class SegmentTest(unittest.TestCase):
     def test_newline_split(self):
         text = "今天去爬山了\n山上风很大\n不过很开心"
         segments = split_text(text, opts(segment_min_chars=5, short_tail_chars=0))
-        self.assertEqual(segments, ["今天去爬山了", "山上风很大", "不过很开心"])
+        # 「不过很开心」是上一句的转折接续，不该单独成条（P0 衔接守卫）。
+        self.assertEqual(segments, ["今天去爬山了", "山上风很大\n不过很开心"])
 
     def test_think_block_protected(self):
         text = "<think>这里有很多标点。不应该切开。真的！</think>回答是好的。"
@@ -228,6 +236,76 @@ class SegmentTest(unittest.TestCase):
         text = "This is a long English sentence without Chinese punctuation and it stays whole."
         segments = split_text(text, opts())
         self.assertEqual(len(segments), 1)
+
+    # -- P0 增补 ---------------------------------------------------------
+
+    def test_hard_max_keeps_english_word_whole(self):
+        text = "啊" * 10 + "HelloWorld" + "啊" * 20
+        segments = split_text(
+            text,
+            opts(segment_min_chars=5, segment_max_chars=10, segment_hard_max_chars=12, short_tail_chars=0),
+        )
+        self.assertTrue(any("HelloWorld" in segment for segment in segments))
+        for segment in segments:
+            self.assertNotIn("Hello", segment.replace("HelloWorld", ""))
+
+    def test_hard_max_keeps_number_whole(self):
+        text = "啊" * 10 + "20260915" + "啊" * 20
+        segments = split_text(
+            text,
+            opts(segment_min_chars=5, segment_max_chars=10, segment_hard_max_chars=12, short_tail_chars=0),
+        )
+        self.assertTrue(any("20260915" in segment for segment in segments))
+
+    def test_hard_max_keeps_digit_measure_word_together(self):
+        text = "字" * 11 + "3个" + "字" * 20
+        segments = split_text(
+            text,
+            opts(segment_min_chars=5, segment_max_chars=10, segment_hard_max_chars=12, short_tail_chars=0),
+        )
+        joined = "|".join(segments)
+        self.assertIn("3个", joined)
+        self.assertNotIn("|3个", joined)
+
+    def test_continuation_guard_no_split_before_conjunction(self):
+        text = "我想点杯咖啡和蛋糕，因为下午还要加班。"
+        segments = split_text(text, opts(segment_max_chars=8, short_tail_chars=0))
+        for segment in segments:
+            self.assertFalse(segment.startswith(("和", "因为", "所以", "但是")))
+
+    def test_anaphora_guard_no_split_before_pronoun(self):
+        text = "刚买的书到了，它的封面特别好看。"
+        segments = split_text(text, opts(segment_max_chars=8, short_tail_chars=0))
+        for segment in segments:
+            self.assertFalse(segment.startswith("它"))
+
+    def test_long_reply_splits_by_paragraphs(self):
+        para = "这是一段比较长的说明文字，用来验证超长回复会按空行段落切分。"
+        text = "\n\n".join([para] * 4)
+        options = opts(max_total_chars=60, paragraph_max_chars=60, max_segments=8, short_tail_chars=0)
+        segments = split_text(text, options)
+        self.assertGreater(len(segments), 1)
+        self.assertEqual(segments[0], para)
+        self.assertTrue(all(len(segment) <= 60 for segment in segments))
+
+    def test_long_reply_merges_short_paragraphs(self):
+        text = "\n\n".join(["第一点说明到了。", "第二点也在这里。", "第三点是最后。"] * 6)
+        options = opts(max_total_chars=50, paragraph_max_chars=200, max_segments=8, short_tail_chars=0)
+        segments = split_text(text, options)
+        self.assertLess(len(segments), 6)
+        for segment in segments:
+            self.assertLessEqual(len(segment), 200)
+
+    def test_question_tail_not_merged(self):
+        text = "这个方法你可以试试看效果如何。要不要我现在就发给你？"
+        segments = split_text(text, opts(short_tail_chars=20))
+        self.assertTrue(segments[-1].endswith("？"))
+        self.assertNotIn("这个方法", segments[-1])
+
+    def test_question_tail_kept_without_punct(self):
+        segments = split_text("先把文件发我一下。要现在发吗", opts(keep_punct=False, short_tail_chars=20))
+        self.assertEqual(len(segments), 2)
+        self.assertEqual(segments[-1], "要现在发吗")
 
 
 class PacingTest(unittest.TestCase):
@@ -272,6 +350,23 @@ class PacingTest(unittest.TestCase):
 
     def test_delay_disabled(self):
         self.assertEqual(segment_delay("你好。", opts(delay_enabled=False)), 0.0)
+
+    def test_read_delay_range(self):
+        options = opts(read_delay_min_seconds=0.5, read_delay_max_seconds=1.5)
+        rng = random.Random(7)
+        for _ in range(50):
+            delay = read_delay(options, rng=rng)
+            self.assertGreaterEqual(delay, 0.5)
+            self.assertLessEqual(delay, 1.5)
+
+    def test_read_delay_disabled_and_zero(self):
+        self.assertEqual(read_delay(opts(delay_enabled=False)), 0.0)
+        self.assertEqual(read_delay(opts(read_delay_min_seconds=0, read_delay_max_seconds=0)), 0.0)
+
+    def test_read_delay_clamped(self):
+        options = ReplyOptions.from_config({"read_delay_min_seconds": 2.0, "read_delay_max_seconds": 1.0})
+        self.assertAlmostEqual(options.read_delay_min_seconds, 2.0)
+        self.assertAlmostEqual(options.read_delay_max_seconds, 2.0)
 
 
 class VerifyTest(unittest.TestCase):
@@ -341,6 +436,11 @@ class MarkerTest(unittest.TestCase):
     def test_empty_segments_filtered(self):
         text, parts = parse_marker("第一。[[next]][[next]]第二。")
         self.assertEqual(parts, ["第一。", "第二。"])
+
+    def test_marker_inside_inline_code_ignored(self):
+        text, parts = parse_marker("用 `a[[next]]b` 再说")
+        self.assertIsNone(parts)
+        self.assertEqual(text, "用 `a[[next]]b` 再说")
 
     def test_build_prompt(self):
         prompt = build_marker_prompt(5)

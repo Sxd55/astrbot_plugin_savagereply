@@ -62,8 +62,14 @@
   "short_tail_chars": {
     "description": "短尾合并阈值",
     "type": "int",
-    "hint": "最后一段少于该字数时并回上一段，避免出现“好的。”这种孤零零的尾巴。0=关闭。",
+    "hint": "最后一段少于该字数时并回上一段，避免出现“好的。”这种孤零零的尾巴。0=关闭。问句不会被并走。",
     "default": 8
+  },
+  "paragraph_max_chars": {
+    "description": "超长回复的段落目标长度",
+    "type": "int",
+    "hint": "超过「最长分段字数」的回复改按空行分段，合并到不超过该长度一条；超过 4 倍上限（多半是粘贴数据）仍整条放行。",
+    "default": 180
   },
   "keep_punct": {
     "description": "保留句尾标点",
@@ -108,10 +114,22 @@
     "default": 4.0
   },
   "delay_total_max_seconds": {
-    "description": "总延迟上限（秒）",
+    "description": "总延迟上限",
     "type": "float",
-    "hint": "整条回复所有分段等待时间的总和上限，超出后剩余分段直接连发。",
+    "hint": "所有等待之和的上限，超出后直接连发（秒）。含首条前的读消息停顿。",
     "default": 10.0
+  },
+  "read_delay_min_seconds": {
+    "description": "首条前读消息停顿下限（秒）",
+    "type": "float",
+    "hint": "真人不会秒回；0.5–1.5 秒是聊天场景的舒适区（太快反而显得不用心）。打字延迟关闭时本项也不生效。",
+    "default": 0.5
+  },
+  "read_delay_max_seconds": {
+    "description": "首条前读消息停顿上限（秒）",
+    "type": "float",
+    "hint": "在上限内随机取值，避免每次都是同一个数。",
+    "default": 1.5
   },
   "typing_enabled": {
     "description": "打字状态",
@@ -130,6 +148,12 @@
     "type": "string",
     "hint": "留空使用内置默认；自定义时可用 {marker} 与 {limit} 两个占位符。",
     "default": ""
+  },
+  "force_non_streaming": {
+    "description": "本会话关闭流式输出",
+    "type": "bool",
+    "hint": "分段必须改写整条回复，而流式内容由框架逐块直接发送、插件改不动（[[next]] 会泄漏给用户）。开启后本插件接管的会话改用整段输出。",
+    "default": true
   },
   "protect_code_block": {
     "description": "保护代码块",

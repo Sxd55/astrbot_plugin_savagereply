@@ -47,6 +47,13 @@ def parse_marker(text: str, marker: str = MARKER) -> tuple[str, list[str] | None
             buf.append("```")
             i += 3
             continue
+        if source[i] == "`":
+            # 行内代码：同一行内成对的 ` 之间不认标记（与分段引擎规则一致）。
+            end = source.find("`", i + 1)
+            if end != -1 and "\n" not in source[i:end]:
+                buf.append(source[i : end + 1])
+                i = end + 1
+                continue
         if not in_fence and source.startswith(marker, i):
             used = True
             parts.append("".join(buf))

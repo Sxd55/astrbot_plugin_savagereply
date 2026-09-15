@@ -10,6 +10,9 @@ from .config import ReplyOptions
 MODE_BYPASS = "bypass"
 MODE_SPLIT = "split"
 
+# 超长回复在 4 倍上限内改用段落切；再长（多半是粘贴/代码/数据）仍然整条放行。
+LONG_SPLIT_FACTOR = 4
+
 _BLOCK_MATH = re.compile(r"\$\$.+?\$\$", re.DOTALL)
 
 
@@ -32,6 +35,9 @@ def decide(text: str, options: ReplyOptions) -> Decision:
         return Decision(MODE_BYPASS, "math")
     length = len(stripped)
     if options.max_total_chars > 0 and length > options.max_total_chars:
+        if length <= options.max_total_chars * LONG_SPLIT_FACTOR:
+            # 超长不再整篇放行：交给段落引擎切成多条（P0）。
+            return Decision(MODE_SPLIT, "long")
         return Decision(MODE_BYPASS, "too_long")
     if length < options.min_total_chars:
         return Decision(MODE_BYPASS, "too_short")

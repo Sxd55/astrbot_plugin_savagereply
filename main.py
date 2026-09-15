@@ -15,7 +15,7 @@ try:
     from .savagereply import PLUGIN_NAME, __version__
     from .savagereply.config import ReplyOptions
     from .savagereply.marker import build_marker_prompt, parse_marker
-    from .savagereply.pacing import segment_delay
+    from .savagereply.pacing import read_delay, segment_delay
     from .savagereply.policy import MODE_SPLIT, decide
     from .savagereply.segment import segments_from_marked, split_text
     from .savagereply.typing_status import (
@@ -29,7 +29,7 @@ except ImportError:
     from savagereply import PLUGIN_NAME, __version__
     from savagereply.config import ReplyOptions
     from savagereply.marker import build_marker_prompt, parse_marker
-    from savagereply.pacing import segment_delay
+    from savagereply.pacing import read_delay, segment_delay
     from savagereply.policy import MODE_SPLIT, decide
     from savagereply.segment import segments_from_marked, split_text
     from savagereply.typing_status import (
@@ -48,6 +48,7 @@ BOOL_CONFIG_KEYS = (
     "delay_enabled",
     "typing_enabled",
     "marker_enabled",
+    "force_non_streaming",
     "protect_code_block",
     "protect_table",
     "protect_math",
@@ -115,6 +116,7 @@ class SavageReplyPlugin(Star):
             "delay_enabled": options.delay_enabled,
             "typing_enabled": options.typing_enabled,
             "marker_enabled": options.marker_enabled,
+            "force_non_streaming": options.force_non_streaming,
             "min_total_chars": options.min_total_chars,
             "max_total_chars": options.max_total_chars,
             "segment_min_chars": options.segment_min_chars,
@@ -122,6 +124,9 @@ class SavageReplyPlugin(Star):
             "segment_hard_max_chars": options.segment_hard_max_chars,
             "max_segments": options.max_segments,
             "short_tail_chars": options.short_tail_chars,
+            "paragraph_max_chars": options.paragraph_max_chars,
+            "read_delay_min_seconds": options.read_delay_min_seconds,
+            "read_delay_max_seconds": options.read_delay_max_seconds,
             "protect_code_block": options.protect_code_block,
             "protect_table": options.protect_table,
             "protect_math": options.protect_math,
@@ -176,6 +181,25 @@ class SavageReplyPlugin(Star):
             logger.info(
                 "Savage's Reply: builtin segmented_reply is off, plugin owns segmentation.",
             )
+
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=MIN_PRIORITY)
+    async def on_message(self, event: AstrMessageEvent):
+        """分段需要改写最终文本，流式结果改不动：本会话内先关掉框架流式。
+
+        框架在 Agent 阶段读取 event extra `enable_streaming`，而消息处理在它之前，
+        所以这里关掉才能拿回 on_decorating_result 的改写权（否则 [[next]] 会泄漏给用户）。
+        """
+        try:
+            options = ReplyOptions.from_config(self.config)
+            if not options.enabled or not options.force_non_streaming:
+                return
+            if event.get_platform_name() in set(options.platform_exclude):
+                return
+            if event.unified_msg_origin in set(options.session_blacklist):
+                return
+            event.set_extra("enable_streaming", False)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Savage's Reply streaming override skipped: %s", exc)
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
@@ -264,6 +288,7 @@ class SavageReplyPlugin(Star):
             return
         if getattr(result, "_savagereply_processed", False):
             return
+        setattr(result, "_savagereply_processed", True)
 
         chain = result.chain
         if any(not isinstance(comp, Plain) for comp in chain):
@@ -272,7 +297,6 @@ class SavageReplyPlugin(Star):
         if not text.strip():
             return
 
-        suffixed = False
         if options.verify_enabled:
             user_text = getattr(event, "message_str", "") or ""
             risks = scan_risks(text, options, user_text=user_text)
@@ -283,7 +307,6 @@ class SavageReplyPlugin(Star):
                 )
                 if not options.verify_log_only and options.verify_suffix_text:
                     text = text.rstrip() + options.verify_suffix_text
-                    suffixed = True
 
         marked: list[str] | None = None
         # 始终解析：即使功能关闭，也要剥掉模型可能自己输出的标记，避免泄漏给用户。
@@ -296,21 +319,19 @@ class SavageReplyPlugin(Star):
         else:
             decision = decide(text, options)
             if decision.mode != MODE_SPLIT:
-                if suffixed:
-                    result.chain = [Plain(text)]
+                # text 已是剥掉标记后的干净文本：bypass 也要写回，否则标记泄漏给用户。
+                result.chain = [Plain(text)]
                 if options.debug_log:
                     logger.info("Savage's Reply bypass: %s", decision.reason)
                 return
             segments = split_text(text, options)
 
         if len(segments) <= 1:
-            if suffixed:
-                result.chain = [Plain(text)]
+            result.chain = [Plain(text)]
             if options.debug_log:
                 logger.info("Savage's Reply bypass: single_segment")
             return
 
-        setattr(result, "_savagereply_processed", True)
         if options.debug_log:
             logger.info(
                 "Savage's Reply split: %s segments, lengths=%s",
@@ -362,7 +383,24 @@ class SavageReplyPlugin(Star):
                     typing_user = str(event.get_sender_id() or "")
             except Exception:  # noqa: BLE001
                 typing_bot = None
+        framework_typing = (
+            self._framework_typing_available(event)
+            if (options.typing_enabled and options.delay_enabled and typing_bot is None)
+            else False
+        )
+
+        first_delay = read_delay(options) if budget > 0 else 0.0
+        first_delay = min(first_delay, budget)
         try:
+            if first_delay > 0:
+                # 真人不会秒回：先亮「正在输入」，再停顿一下再发第一条。
+                if typing_bot:
+                    await set_input_status(typing_bot, typing_user, TYPING_EVENT_TYPE)
+                elif framework_typing:
+                    await self._framework_typing(event, True)
+                await asyncio.sleep(first_delay)
+                budget = max(0.0, budget - first_delay)
+
             for index, segment in enumerate(segments):
                 is_last = index == len(segments) - 1
                 if is_last and hand_back:
@@ -383,6 +421,8 @@ class SavageReplyPlugin(Star):
                             typing_user,
                             TYPING_EVENT_TYPE,
                         )
+                    elif framework_typing:
+                        await self._framework_typing(event, True)
                     await asyncio.sleep(delay)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
@@ -396,3 +436,27 @@ class SavageReplyPlugin(Star):
         finally:
             if typing_bot:
                 await set_input_status(typing_bot, typing_user, STOP_EVENT_TYPE)
+            elif framework_typing:
+                await self._framework_typing(event, False)
+
+    @staticmethod
+    def _framework_typing_available(event: AstrMessageEvent) -> bool:
+        """平台是否实现了框架的 send_typing（webchat 的语义是 run_started，跳过）。"""
+        try:
+            from astrbot.core.platform.astr_message_event import AstrMessageEvent as BaseEvent
+
+            if event.get_platform_name() == "webchat":
+                return False
+            return type(event).send_typing is not BaseEvent.send_typing
+        except Exception:  # noqa: BLE001
+            return False
+
+    @staticmethod
+    async def _framework_typing(event: AstrMessageEvent, active: bool) -> None:
+        try:
+            if active:
+                await event.send_typing()
+            else:
+                await event.stop_typing()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Savage's Reply framework typing skipped: %s", exc)
