@@ -170,7 +170,13 @@
   "protect_math": {
     "description": "保护公式",
     "type": "bool",
-    "hint": "回复包含 $$ 块级公式时整条不分段。",
+    "hint": "含 $$ 块级公式的回复整条发送。",
+    "default": true
+  },
+  "strip_markdown_marks": {
+    "description": "去掉 ** 加粗标记",
+    "type": "bool",
+    "hint": "QQ 等不渲染 Markdown 的平台会把 **加粗** 原样显示成星号。开启后发送前摘掉成对的 ** / __ 标记（保留文字）；代码块与行内代码内的星号不动。Telegram/Discord 等渲染 Markdown 的平台可关闭。",
     "default": true
   },
   "debug_log": {

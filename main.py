@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import random
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
-from astrbot.api.message_components import Plain
+from astrbot.api.message_components import Plain, Record
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star, register
 from astrbot.api.web import error_response, json_response, request
@@ -17,7 +18,7 @@ try:
     from .savagereply.marker import build_marker_prompt, parse_marker
     from .savagereply.pacing import read_delay, segment_delay
     from .savagereply.policy import MODE_SPLIT, decide
-    from .savagereply.segment import segments_from_marked, split_text
+    from .savagereply.segment import segments_from_marked, split_text, strip_emphasis
     from .savagereply.typing_status import (
         STOP_EVENT_TYPE,
         TYPING_EVENT_TYPE,
@@ -31,7 +32,7 @@ except ImportError:
     from savagereply.marker import build_marker_prompt, parse_marker
     from savagereply.pacing import read_delay, segment_delay
     from savagereply.policy import MODE_SPLIT, decide
-    from savagereply.segment import segments_from_marked, split_text
+    from savagereply.segment import segments_from_marked, split_text, strip_emphasis
     from savagereply.typing_status import (
         STOP_EVENT_TYPE,
         TYPING_EVENT_TYPE,
@@ -52,6 +53,7 @@ BOOL_CONFIG_KEYS = (
     "protect_code_block",
     "protect_table",
     "protect_math",
+    "strip_markdown_marks",
     "verify_enabled",
     "verify_log_only",
 )
@@ -130,6 +132,7 @@ class SavageReplyPlugin(Star):
             "protect_code_block": options.protect_code_block,
             "protect_table": options.protect_table,
             "protect_math": options.protect_math,
+            "strip_markdown_marks": options.strip_markdown_marks,
             "verify_enabled": options.verify_enabled,
             "verify_log_only": options.verify_log_only,
             "platform_exclude": list(options.platform_exclude),
@@ -238,30 +241,88 @@ class SavageReplyPlugin(Star):
         else:
             req.prompt = text
 
-    async def _tts_active(self, event: AstrMessageEvent) -> bool:
-        """探测框架是否会在发送前用 TTS 把文本转成语音。
+    def _tts_settings(self) -> dict:
+        try:
+            return dict(self.context.get_config().get("provider_tts_settings") or {})
+        except Exception:  # noqa: BLE001
+            return {}
 
-        若会，分段发送会把前半截发成文字、最后一段发成语音，必须整包交还框架。
+    async def _tts_provider(self, event: AstrMessageEvent):
+        """探测框架 TTS 是否会生效；返回 provider 或 None。
+
+        注意：框架的 TTS 会把链里每个 Plain 各转成一条 Record，但整条链仍然
+        只作为**一条消息**发出。所以分段必须在插件内自己做 TTS，不能把多段
+        交还框架——否则用户只会收到一条合并的长语音。
         """
         try:
-            config = self.context.get_config()
-            settings = config.get("provider_tts_settings", {})
+            settings = self._tts_settings()
             if not settings.get("enable", False):
-                return False
+                return None
+            try:
+                probability = float(settings.get("trigger_probability", 1.0))
+            except (TypeError, ValueError):
+                probability = 1.0
+            if probability < 1.0 and random.random() > probability:
+                return None
             try:
                 from astrbot.core.star.session_llm_manager import SessionServiceManager
 
                 if not await SessionServiceManager.should_process_tts_request(event):
-                    return False
+                    return None
             except ImportError:
-                return False
+                return None
             provider = await self.context.get_using_tts_provider_async(
                 event.unified_msg_origin,
             )
-            return bool(provider)
+            return provider or None
         except Exception as exc:  # noqa: BLE001
             logger.debug("Savage's Reply: tts probe skipped: %s", exc)
-            return False
+            return None
+
+    async def _tts_active(self, event: AstrMessageEvent) -> bool:
+        """兼容旧调用：TTS 是否生效。"""
+        return bool(await self._tts_provider(event))
+
+    async def _tts_url(self, audio_path: str) -> str | None:
+        """按框架配置决定音频要不要走文件服务（远程适配器需要 URL）。"""
+        settings = self._tts_settings()
+        if not settings.get("use_file_service"):
+            return None
+        try:
+            callback_api_base = str(
+                self.context.get_config().get("callback_api_base") or ""
+            ).strip()
+        except Exception:  # noqa: BLE001
+            callback_api_base = ""
+        if not callback_api_base:
+            return None
+        try:
+            from astrbot.core import file_token_service
+
+            token = await file_token_service.register_file(audio_path)
+            return f"{callback_api_base}/api/file/{token}"
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Savage's Reply: tts file service skipped: %s", exc)
+            return None
+
+    async def _segment_chain(self, segment: str, tts_provider) -> MessageChain:
+        """把一段文本变成要发送的消息链：TTS 开启时合成语音，失败回落文字。"""
+        if tts_provider is None:
+            return MessageChain().message(segment)
+        try:
+            audio_path = await tts_provider.get_audio(segment)
+            if not audio_path:
+                raise RuntimeError("TTS 未返回音频文件")
+            url = await self._tts_url(audio_path)
+            chain = MessageChain(
+                chain=[Record(file=url or audio_path, url=url or audio_path, text=segment)],
+            )
+            if self._tts_settings().get("dual_output"):
+                chain.message(segment)
+            return chain
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Savage's Reply TTS failed, sending text instead: %s", exc)
+            return MessageChain().message(segment)
 
     @filter.on_decorating_result(priority=MIN_PRIORITY)
     async def on_decorating_result(self, event: AstrMessageEvent):
@@ -296,6 +357,10 @@ class SavageReplyPlugin(Star):
         text = "".join(getattr(comp, "text", "") or "" for comp in chain)
         if not text.strip():
             return
+
+        if options.strip_markdown_marks:
+            # QQ 等不渲染 Markdown 的平台会把 ** 原样显示，发送前摘掉成对标记。
+            text = strip_emphasis(text)
 
         if options.verify_enabled:
             user_text = getattr(event, "message_str", "") or ""
@@ -339,21 +404,22 @@ class SavageReplyPlugin(Star):
                 [len(seg) for seg in segments],
             )
 
-        if await self._tts_active(event):
-            if options.debug_log:
-                logger.info(
-                    "Savage's Reply: framework TTS active, hand back %s parts for per-part TTS.",
-                    len(segments),
-                )
-            result.chain = [Plain(seg) for seg in segments]
-            return
+        # 框架的 TTS 把每个 Plain 各转成一条 Record，但整条链只发一条消息；
+        # 想「分段 + 语音」必须在插件里逐段合成、逐段发送。
+        tts_provider = await self._tts_provider(event)
+        if tts_provider and options.debug_log:
+            logger.info(
+                "Savage's Reply: TTS active, synthesizing %s segments one by one.",
+                len(segments),
+            )
 
         await self._send_segments(
             event,
             result,
             segments,
             options,
-            hand_back=not self._builtin_segmented_enabled(),
+            hand_back=not self._builtin_segmented_enabled() and tts_provider is None,
+            tts_provider=tts_provider,
         )
 
     async def _send_segments(
@@ -363,11 +429,13 @@ class SavageReplyPlugin(Star):
         segments: list[str],
         options: ReplyOptions,
         hand_back: bool = True,
+        tts_provider=None,
     ) -> None:
         """前 N-1 段自行发送；最后一段默认留在 result.chain 交给框架。
 
-        hand_back=False（内置分段开启时）：最后一段也自行发送并清空 chain，
-        避免框架把最后一段二次切碎。
+        hand_back=False（内置分段开启、或 TTS 逐段合成时）：最后一段也自行发送并清空
+        chain，避免框架把最后一段二次切碎 / 把多段合并成一条消息。
+        tts_provider 非空时逐段合成语音发送（框架的 TTS 只会把整条链塞进一条消息）。
         """
         sent = 0
         budget = options.delay_total_max_seconds
@@ -406,7 +474,7 @@ class SavageReplyPlugin(Star):
                 if is_last and hand_back:
                     result.chain = [Plain(segment)]
                     return
-                await event.send(MessageChain().message(segment))
+                await event.send(await self._segment_chain(segment, tts_provider))
                 sent += 1
                 if is_last:
                     result.chain = []

@@ -119,6 +119,41 @@ def _starts_with_binder(source: str, index: int) -> bool:
     return bool(CONTINUATION_RE.match(rest) or ANAPHORA_RE.match(rest))
 
 
+def strip_emphasis(text: str) -> str:
+    """去掉成对的 **加粗** / __加粗__ 标记，只留文字。
+
+    QQ 等不渲染 Markdown 的平台会把星号原样显示，转义前先摘掉。
+    ``` 围栏代码块与 `行内代码` 内部不动；不成对的单个标记保持原样。
+    """
+    source = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    out: list[str] = []
+    in_fence = False
+    i = 0
+    n = len(source)
+    while i < n:
+        if source.startswith("```", i):
+            in_fence = not in_fence
+            out.append("```")
+            i += 3
+            continue
+        if not in_fence and source[i] == "`":
+            end = source.find("`", i + 1)
+            if end != -1 and "\n" not in source[i:end]:
+                out.append(source[i : end + 1])
+                i = end + 1
+                continue
+        if not in_fence and source[i] in "*_" and source.startswith(source[i] * 2, i):
+            mark = source[i] * 2
+            end = source.find(mark, i + 2)
+            if end != -1 and "\n" not in source[i:end]:
+                out.append(source[i + 2 : end])
+                i = end + 2
+                continue
+        out.append(source[i])
+        i += 1
+    return "".join(out)
+
+
 def split_text(text: str, options: ReplyOptions) -> list[str]:
     """把一段文本切成若干短句。保护区内绝不切断；超长走段落切。"""
     source = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -196,6 +231,15 @@ def _split_sentences(source: str, options: ReplyOptions) -> list[str]:
             splitter.add(source[i:end])
             i = end
             continue
+
+        # 6.5) 成对强调符号 **加粗** / __加粗__：不切在中间
+        #      （开启 strip_markdown_marks 时正文里已无标记，这里是关掉开关后的保护）
+        if char in "*_" and source.startswith(char * 2, i):
+            end = source.find(char * 2, i + 2)
+            if end != -1 and "\n" not in source[i:end]:
+                splitter.add(source[i : end + 2])
+                i = end + 2
+                continue
 
         # 7) 断点（成对符号内部不切；后接续接词/指代也不切）
         if not splitter.stack:

@@ -4,16 +4,37 @@
 - 标记只作为提示，是否使用由模型决定；
 - ``` 围栏代码块内的标记不生效、不移除（防止切坏代码）；
 - 代码块外的标记会被移除并按位置切分；
-- 切分结果不足 2 段视为未使用标记。
+- 切分结果不足 2 段视为未使用标记；
+- 容错：模型少写一层方括号（[next]）或用全角括号（【next】／［next］）、
+  大小写混写（[NEXT]）都按标记处理，避免标记直接漏给用户。
 """
 
 from __future__ import annotations
 
+import re
+
 MARKER = "[[next]]"
+
+# 容错匹配：[[next]] / [next] / 【next】 / ［next］，忽略大小写与内部空格；
+# 括号层数写歪或漏写收尾括号（[[next / [[next] / [[next]]] / [[[next]]]）也整段吃掉，
+# 不留 [ 或 ] 碎片。
+MARKER_RE = re.compile(
+    r"(?:"
+    r"\[{2,3}\s*next\s*\]{0,3}"
+    r"|\[\s*next\s*\]{0,2}"
+    r"|【{1,2}\s*next\s*】{0,2}"
+    r"|［{1,2}\s*next\s*］{0,2}"
+    r")",
+    re.IGNORECASE,
+)
+
+# 标记空壳：模型把 next 写丢后留下的纯括号对（[[]]、[]、【】、［］），一并清掉。
+DEBRIS_RE = re.compile(r"(?:\[{1,2}\s*\]{1,2}|【{1,2}\s*】{1,2}|［{1,2}\s*］{1,2})")
 
 DEFAULT_PROMPT = (
     "【输出格式约定】如果你想把回复分成多条消息发送，"
     "请在需要断开的位置插入标记 {marker}（一条回复最多 {limit} 处），插在标点之后。"
+    "标记请完整写出两层方括号，不要只写一层。"
     "是否使用、用在哪里由你判断；不需要分条时不要使用。"
     "代码块、表格、引用块内部禁止出现该标记。"
 )
@@ -21,6 +42,22 @@ DEFAULT_PROMPT = (
 
 def build_marker_prompt(limit: int, marker: str = MARKER) -> str:
     return DEFAULT_PROMPT.format(marker=marker, limit=max(1, int(limit)))
+
+
+def _has_marker(source: str, marker: str = MARKER) -> bool:
+    if marker == MARKER:
+        return bool(MARKER_RE.search(source) or DEBRIS_RE.search(source))
+    return marker in source
+
+
+def _marker_len(source: str, index: int, marker: str = MARKER) -> int:
+    """在 index 处匹配标记（或标记空壳），返回长度；不是标记返回 0。"""
+    if marker == MARKER:
+        match = MARKER_RE.match(source, index) or DEBRIS_RE.match(source, index)
+        return match.end() - index if match else 0
+    if source.startswith(marker, index):
+        return len(marker)
+    return 0
 
 
 def parse_marker(text: str, marker: str = MARKER) -> tuple[str, list[str] | None]:
@@ -31,7 +68,7 @@ def parse_marker(text: str, marker: str = MARKER) -> tuple[str, list[str] | None
         第一项可能等于原文（标记只在代码块内或不存在）。
     """
     source = text or ""
-    if marker not in source:
+    if not _has_marker(source, marker):
         return source, None
 
     parts: list[str] = []
@@ -54,12 +91,14 @@ def parse_marker(text: str, marker: str = MARKER) -> tuple[str, list[str] | None
                 buf.append(source[i : end + 1])
                 i = end + 1
                 continue
-        if not in_fence and source.startswith(marker, i):
-            used = True
-            parts.append("".join(buf))
-            buf = []
-            i += len(marker)
-            continue
+        if not in_fence:
+            length = _marker_len(source, i, marker)
+            if length:
+                used = True
+                parts.append("".join(buf))
+                buf = []
+                i += length
+                continue
         buf.append(source[i])
         i += 1
     parts.append("".join(buf))

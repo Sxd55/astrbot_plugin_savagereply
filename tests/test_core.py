@@ -18,7 +18,7 @@ from savagereply.config import ReplyOptions  # noqa: E402
 from savagereply.marker import build_marker_prompt, parse_marker  # noqa: E402
 from savagereply.pacing import read_delay, segment_delay  # noqa: E402
 from savagereply.policy import MODE_BYPASS, MODE_SPLIT, decide, is_markdown_table  # noqa: E402
-from savagereply.segment import segments_from_marked, split_text  # noqa: E402
+from savagereply.segment import segments_from_marked, split_text, strip_emphasis  # noqa: E402
 from savagereply.typing_status import set_input_status, should_show_typing  # noqa: E402
 from savagereply.verify import scan_risks  # noqa: E402
 
@@ -237,6 +237,31 @@ class SegmentTest(unittest.TestCase):
         segments = split_text(text, opts())
         self.assertEqual(len(segments), 1)
 
+    # -- Markdown 加粗（实机踩过：用户看到 **） ---------------------------
+
+    def test_strip_emphasis_pairs(self):
+        self.assertEqual(strip_emphasis("这是**加粗**的话。"), "这是加粗的话。")
+        self.assertEqual(strip_emphasis("__下划线加粗__也要处理。"), "下划线加粗也要处理。")
+
+    def test_strip_emphasis_keeps_code_and_singles(self):
+        self.assertEqual(strip_emphasis("算式 2*3*4 不能动。"), "算式 2*3*4 不能动。")
+        self.assertEqual(strip_emphasis("行内 `a**b` 不动。"), "行内 `a**b` 不动。")
+        self.assertEqual(strip_emphasis("```py\nx = a ** b\n```"), "```py\nx = a ** b\n```")
+        self.assertEqual(strip_emphasis("只有一个**星号。"), "只有一个**星号。")
+
+    def test_split_does_not_break_emphasis_pair(self):
+        text = "前面铺垫一些字，**加粗里也有逗号，而且很长很长，长到超过分段上限**，后面继续。"
+        options = opts(
+            segment_max_chars=30,
+            segment_hard_max_chars=60,
+            strip_markdown_marks=False,
+            short_tail_chars=0,
+        )
+        segments = split_text(text, options)
+        for segment in segments:
+            self.assertNotEqual(segment.count("**"), 1, segment)
+        self.assertEqual(sum(segment.count("**") for segment in segments), 2)
+
     # -- P0 增补 ---------------------------------------------------------
 
     def test_hard_max_keeps_english_word_whole(self):
@@ -442,10 +467,66 @@ class MarkerTest(unittest.TestCase):
         self.assertIsNone(parts)
         self.assertEqual(text, "用 `a[[next]]b` 再说")
 
+    # -- 容错：模型少写一层括号 / 全角 / 大小写（实机踩过） ----------------
+
+    def test_single_bracket_marker(self):
+        text, parts = parse_marker("第一段。[next]第二段。[next]第三段。")
+        self.assertEqual(parts, ["第一段。", "第二段。", "第三段。"])
+        self.assertEqual(text, "第一段。第二段。第三段。")
+
+    def test_single_bracket_with_newlines(self):
+        text, parts = parse_marker("嘴上带刺。[next]\n\n底下是软的。\n[next]\n还有一句。")
+        self.assertEqual(parts, ["嘴上带刺。", "底下是软的。", "还有一句。"])
+        self.assertNotIn("[next]", text)
+
+    def test_fullwidth_markers(self):
+        text, parts = parse_marker("甲。【next】乙。［next］丙。")
+        self.assertEqual(parts, ["甲。", "乙。", "丙。"])
+
+    def test_case_insensitive_marker(self):
+        text, parts = parse_marker("甲。[NEXT]乙。[Next]")
+        self.assertEqual(parts, ["甲。", "乙。"])
+
+    def test_mixed_variants(self):
+        text, parts = parse_marker("一。[[next]]二。[next]三。【next】四。")
+        self.assertEqual(parts, ["一。", "二。", "三。", "四。"])
+
+    def test_single_bracket_inside_code_ignored(self):
+        source = "```js\nconst a = b[next];\n```\n正文"
+        text, parts = parse_marker(source)
+        self.assertIsNone(parts)
+        self.assertEqual(text, source)
+
+    def test_word_containing_next_not_marker(self):
+        text, parts = parse_marker("next 是下一个的意思，[next] 才是标记。")
+        self.assertEqual(parts, ["next 是下一个的意思，", "才是标记。"])
+
     def test_build_prompt(self):
         prompt = build_marker_prompt(5)
         self.assertIn("[[next]]", prompt)
         self.assertIn("5", prompt)
+        self.assertIn("两层方括号", prompt)
+
+    # -- 标记空壳 / 括号残渣（实机踩过：用户看到 [[]]） --------------------
+
+    def test_empty_debris_removed(self):
+        for source in ("甲。[[]]乙。", "甲。[[]] 乙。", "甲。[]乙。", "甲。【】乙。", "甲。［］乙。"):
+            text, parts = parse_marker(source)
+            self.assertNotIn("[[]]", text)
+            self.assertNotIn("[]", text)
+            self.assertNotIn("【】", text)
+            self.assertEqual(text, "甲。乙。", source)
+
+    def test_unbalanced_marker_fully_consumed(self):
+        for source in ("甲。[[next]乙。", "甲。[[next]]]乙。", "甲。[[[next]]]乙。", "甲。[[next乙。"):
+            text, parts = parse_marker(source)
+            self.assertEqual(text, "甲。乙。", source)
+            self.assertNotIn("[", text)
+
+    def test_debris_inside_code_kept(self):
+        source = "```py\narr = x[[]]\n```\n正文"
+        text, parts = parse_marker(source)
+        self.assertEqual(text, source)
 
     def test_segments_from_marked_respects_limit(self):
         options = opts(max_segments=2, short_tail_chars=0)

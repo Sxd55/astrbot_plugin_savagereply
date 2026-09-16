@@ -89,6 +89,11 @@ const FRAMES = [
       { key: "protect_code_block", name: "保护代码块", hint: "含 ``` 的回复整条发送。" },
       { key: "protect_table", name: "保护表格", hint: "含 Markdown 表格的回复整条发送。" },
       { key: "protect_math", name: "保护公式", hint: "含 $$ 块级公式的回复整条发送。" },
+      {
+        key: "strip_markdown_marks",
+        name: "去掉 ** 加粗标记",
+        hint: "QQ 不渲染 Markdown，发送前摘掉成对的 ** / __（代码内不动）。",
+      },
     ],
     facts: [
       ["最长分段字数", (c) => `${c.max_total_chars ?? "—"} 字`],

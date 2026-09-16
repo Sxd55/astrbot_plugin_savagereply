@@ -35,7 +35,7 @@ LABEL = {
     "delay_max_seconds": "单条延迟上限", "delay_total_max_seconds": "总延迟上限",
     "read_delay_min_seconds": "首条前读消息停顿下限",
     "read_delay_max_seconds": "首条前读消息停顿上限",
-    "typing_enabled": "打字状态", "marker_enabled": "边界标记",
+    "typing_enabled": "打字状态", "marker_enabled": "边界标记", "strip_markdown_marks": "去掉 ** 加粗标记",
     "marker_prompt": "边界标记规范文本", "protect_code_block": "保护代码块",
     "force_non_streaming": "本会话关闭流式输出",
     "protect_table": "保护代码块", "protect_math": "保护代码块",

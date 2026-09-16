@@ -405,39 +405,159 @@ class ReplyIntegrationTest(unittest.TestCase):
 
     # -- tts -------------------------------------------------------------------
 
-    def test_tts_hands_back_parts(self):
+    def _with_tts(self, provider, probability=1.0):
+        """装上假的 TTS provider / 会话开关，返回还原函数。"""
         import astrbot.core.star.session_llm_manager as manager_mod
 
         manager = manager_mod.SessionServiceManager
-        self.ctx.astrbot_config = {"provider_tts_settings": {"enable": True}}
-
-        async def fake_send(chain):  # pragma: no cover - guard
-            raise AssertionError("must not send under TTS")
+        self.ctx.astrbot_config = {
+            "provider_tts_settings": {"enable": True, "trigger_probability": probability},
+        }
 
         async def fake_should_process(_event):
             return True
 
-        async def fake_tts_provider(_umo):
-            return SimpleNamespace()
-
         old_should = getattr(manager, "should_process_tts_request", None)
         setattr(manager, "should_process_tts_request", staticmethod(fake_should_process))
-        self.ctx.get_using_tts_provider_async = fake_tts_provider
-        try:
-            text = "我今天下午去了一趟书店，买了两本小说。一本是科幻，一本是推理，都很喜欢。你要不要借去看？"
-            event = make_event(text, group="1")
-            result = make_result(text)
-            event.set_result(result)
-            event.send = fake_send
-            asyncio.run(self.plugin.on_decorating_result(event))
-            self.assertGreaterEqual(len(result.chain), 2)
-            for comp in result.chain:
-                self.assertIsInstance(comp, Plain)
-        finally:
+
+        async def fake_provider(_umo):
+            return provider
+
+        self.ctx.get_using_tts_provider_async = fake_provider
+
+        def restore():
             if old_should is not None:
                 setattr(manager, "should_process_tts_request", old_should)
             if hasattr(self.ctx, "get_using_tts_provider_async"):
                 delattr(self.ctx, "get_using_tts_provider_async")
+
+        return restore
+
+    @staticmethod
+    def _voice_provider(audio_path="/tmp/fake.mp3", fail=False):
+        class Provider:
+            def __init__(self):
+                self.calls = []
+
+            async def get_audio(self, text):
+                self.calls.append(text)
+                if fail:
+                    raise RuntimeError("tts down")
+                return audio_path
+
+        return Provider()
+
+    def test_tts_synthesizes_each_segment(self):
+        from astrbot.api.message_components import Record
+
+        provider = self._voice_provider()
+        restore = self._with_tts(provider)
+        try:
+            text = "第一段话要写长一点点，凑够最短分段字数的要求。第二段话也写长一些，确保能被算成候选。第三段话同样要够长，这样才能切成三条。"
+            event = make_event(text, group="1")
+            result = make_result(text)
+            event.set_result(result)
+            sent = []
+
+            async def fake_send(chain):
+                sent.append(chain)
+
+            event.send = fake_send
+            asyncio.run(self.plugin.on_decorating_result(event))
+
+            self.assertEqual(len(sent), 3)
+            self.assertEqual(len(provider.calls), 3)
+            for chain in sent:
+                kinds = [type(comp).__name__ for comp in chain.chain]
+                self.assertIn("Record", kinds)
+            self.assertEqual(result.chain, [])
+        finally:
+            restore()
+
+    def test_tts_failure_falls_back_to_text(self):
+        provider = self._voice_provider(fail=True)
+        restore = self._with_tts(provider)
+        try:
+            text = "第一段话要写长一点点，凑够最短分段字数的要求。第二段话也写长一些，确保能被算成候选。"
+            event = make_event(text, group="1")
+            result = make_result(text)
+            event.set_result(result)
+            sent = []
+
+            async def fake_send(chain):
+                sent.append(chain)
+
+            event.send = fake_send
+            asyncio.run(self.plugin.on_decorating_result(event))
+
+            self.assertEqual(len(sent), 2)
+            for chain in sent:
+                self.assertEqual(len(chain.chain), 1)
+                self.assertIsInstance(chain.chain[0], Plain)
+                self.assertTrue(chain.chain[0].text.strip())
+        finally:
+            restore()
+
+    def test_tts_probability_zero_keeps_text_flow(self):
+        provider = self._voice_provider()
+        restore = self._with_tts(provider, probability=0.0)
+        try:
+            text = "第一段话要写长一点点，凑够最短分段字数的要求。第二段话也写长一些，确保能被算成候选。"
+            event = make_event(text, group="1")
+            result = make_result(text)
+            event.set_result(result)
+            sent = []
+
+            async def fake_send(chain):
+                sent.append(chain)
+
+            event.send = fake_send
+            asyncio.run(self.plugin.on_decorating_result(event))
+
+            self.assertEqual(provider.calls, [])
+            self.assertEqual(len(sent), 1)
+            self.assertIn("第二段话", chain_text(result.chain))
+        finally:
+            restore()
+
+    # -- 单层方括号标记（实机踩过：模型写了 [next]，插件只认 [[next]]） ----
+
+    def test_single_bracket_marker_splits_live(self):
+        text = "嘴上带刺。[next]底下是软的。[next]还有一句。"
+        _event, result, sent = self._decorate(text)
+        self.assertEqual(len(sent), 2)
+        joined = "".join(sent) + chain_text(result.chain)
+        self.assertNotIn("[next]", joined)
+        self.assertIn("底下是软的", joined)
+
+    def test_single_bracket_marker_stripped_when_disabled(self):
+        self.plugin.config["marker_enabled"] = False
+        text = "嘴上带刺。[next]底下是软的。[next]还有一句。"
+        _event, result, sent = self._decorate(text)
+        joined = "".join(sent) + chain_text(result.chain)
+        self.assertNotIn("[next]", joined)
+
+    def test_debris_and_marker_mix(self):
+        text = "第一句先垫一下字数。[[]]第二句内容也够长。[next]第三句收尾。"
+        _event, result, sent = self._decorate(text)
+        joined = "".join(sent) + chain_text(result.chain)
+        self.assertNotIn("[[]]", joined)
+        self.assertNotIn("[next]", joined)
+        self.assertIn("第三句收尾", joined)
+
+    def test_markdown_marks_stripped(self):
+        text = "这是**加粗的重点**，后面还有普通内容要继续说下去。再来一句收尾的话。"
+        _event, result, sent = self._decorate(text)
+        joined = "".join(sent) + chain_text(result.chain)
+        self.assertNotIn("**", joined)
+        self.assertIn("加粗的重点", joined)
+
+    def test_markdown_marks_kept_when_disabled(self):
+        self.plugin.config["strip_markdown_marks"] = False
+        text = "这是**加粗的重点**，后面还有普通内容要继续说下去。再来一句收尾的话。"
+        _event, result, sent = self._decorate(text)
+        joined = "".join(sent) + chain_text(result.chain)
+        self.assertIn("**", joined)
 
     # -- typing ------------------------------------------------------------------
 
