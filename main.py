@@ -14,7 +14,13 @@ from astrbot.api.web import error_response, json_response, request
 
 try:
     from .savagereply import PLUGIN_NAME, __version__
-    from .savagereply.config import ReplyOptions
+    from .savagereply.config import (
+        ReplyOptions,
+        _as_bool,
+        _as_float,
+        _as_int,
+        _as_str_list,
+    )
     from .savagereply.marker import build_marker_prompt, parse_marker
     from .savagereply.pacing import read_delay, segment_delay
     from .savagereply.policy import MODE_SPLIT, decide
@@ -28,7 +34,13 @@ try:
     from .savagereply.verify import scan_risks
 except ImportError:
     from savagereply import PLUGIN_NAME, __version__
-    from savagereply.config import ReplyOptions
+    from savagereply.config import (
+        ReplyOptions,
+        _as_bool,
+        _as_float,
+        _as_int,
+        _as_str_list,
+    )
     from savagereply.marker import build_marker_prompt, parse_marker
     from savagereply.pacing import read_delay, segment_delay
     from savagereply.policy import MODE_SPLIT, decide
@@ -58,15 +70,36 @@ BOOL_CONFIG_KEYS = (
     "verify_log_only",
 )
 
+INT_CONFIG_KEYS = (
+    "min_total_chars",
+    "max_total_chars",
+    "segment_min_chars",
+    "segment_max_chars",
+    "segment_hard_max_chars",
+    "max_segments",
+    "short_tail_chars",
+    "paragraph_max_chars",
+)
+
+FLOAT_CONFIG_KEYS = (
+    "delay_base_seconds",
+    "delay_per_char_seconds",
+    "delay_punct_bonus_seconds",
+    "delay_jitter",
+    "delay_max_seconds",
+    "delay_total_max_seconds",
+    "read_delay_min_seconds",
+    "read_delay_max_seconds",
+)
+
+LIST_CONFIG_KEYS = (
+    "platform_exclude",
+    "session_blacklist",
+)
+
 
 def _coerce_bool(value, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    if isinstance(value, (int, float)):
-        return bool(value)
-    return default
+    return _as_bool(value, default)
 
 
 def _is_streaming(result) -> bool:
@@ -151,10 +184,14 @@ class SavageReplyPlugin(Star):
         for key, value in values.items():
             if key not in BOOL_CONFIG_KEYS:
                 continue
-            self.config[key] = _coerce_bool(value)
+            self.config[key] = _as_bool(value, False)
             changed[key] = self.config[key]
-        if changed and hasattr(self.config, "save_config"):
-            self.config.save_config()
+
+        if changed:
+            if hasattr(self.config, "save_config"):
+                self.config.save_config()
+            elif hasattr(self.context, "save_config"):
+                self.context.save_config()
         return json_response({"ok": True, "changed": changed, "values": self._public_config()})
 
     async def initialize(self):
@@ -352,9 +389,21 @@ class SavageReplyPlugin(Star):
         setattr(result, "_savagereply_processed", True)
 
         chain = result.chain
-        if any(not isinstance(comp, Plain) for comp in chain):
-            return
-        text = "".join(getattr(comp, "text", "") or "" for comp in chain)
+        head_comps: list = []
+        tail_comps: list = []
+        plain_texts: list[str] = []
+        seen_plain = False
+
+        for comp in chain:
+            if isinstance(comp, Plain):
+                plain_texts.append(getattr(comp, "text", "") or "")
+                seen_plain = True
+            elif not seen_plain and isinstance(comp, (At, Reply)):
+                head_comps.append(comp)
+            else:
+                tail_comps.append(comp)
+
+        text = "".join(plain_texts)
         if not text.strip():
             return
 
@@ -385,14 +434,14 @@ class SavageReplyPlugin(Star):
             decision = decide(text, options)
             if decision.mode != MODE_SPLIT:
                 # text 已是剥掉标记后的干净文本：bypass 也要写回，否则标记泄漏给用户。
-                result.chain = [Plain(text)]
+                result.chain = [*head_comps, Plain(text), *tail_comps]
                 if options.debug_log:
                     logger.info("Savage's Reply bypass: %s", decision.reason)
                 return
             segments = split_text(text, options)
 
         if len(segments) <= 1:
-            result.chain = [Plain(text)]
+            result.chain = [*head_comps, Plain(text), *tail_comps]
             if options.debug_log:
                 logger.info("Savage's Reply bypass: single_segment")
             return
@@ -419,6 +468,8 @@ class SavageReplyPlugin(Star):
             segments,
             options,
             tts_provider=tts_provider,
+            head_comps=head_comps,
+            tail_comps=tail_comps,
         )
 
     def _framework_headers(self, event: AstrMessageEvent) -> tuple[list, str]:
@@ -451,6 +502,8 @@ class SavageReplyPlugin(Star):
         segments: list[str],
         options: ReplyOptions,
         tts_provider=None,
+        head_comps: list | None = None,
+        tail_comps: list | None = None,
     ) -> None:
         """逐段自行发送并清空 result.chain。
 
@@ -458,9 +511,12 @@ class SavageReplyPlugin(Star):
         一段交还框架，会出现「前几段无引用、最后一段带引用」。这里全部自行发送，并把
         框架会加的回复头复刻到第一段（非纯文本段不加，与框架 can_decorate 一致）。
         tts_provider 非空时逐段合成语音发送（框架的 TTS 只会把整条链塞进一条消息）。
+        同时保留原本的 head_comps（如现有 At/Reply）与 tail_comps（如 Image）。
         """
         sent = 0
         budget = options.delay_total_max_seconds
+        head_comps = list(head_comps or [])
+        tail_comps = list(tail_comps or [])
         typing_bot = None
         typing_user = ""
         if options.typing_enabled and options.delay_enabled:
@@ -480,6 +536,9 @@ class SavageReplyPlugin(Star):
         )
 
         headers, prefix = self._framework_headers(event)
+        existing_types = {type(c) for c in head_comps}
+        all_head = [h for h in headers if type(h) not in existing_types] + head_comps
+
         first_delay = read_delay(options) if budget > 0 else 0.0
         first_delay = min(first_delay, budget)
         try:
@@ -495,12 +554,14 @@ class SavageReplyPlugin(Star):
             for index, segment in enumerate(segments):
                 text = f"{prefix}{segment}" if index == 0 and prefix else segment
                 chain = await self._segment_chain(text, tts_provider)
-                if index == 0 and headers and all(
+                if index == 0 and all_head and all(
                     isinstance(comp, (Plain, Image)) for comp in chain.chain
                 ):
-                    if isinstance(headers[-1], At) and isinstance(chain.chain[0], Plain):
+                    if isinstance(all_head[-1], At) and isinstance(chain.chain[0], Plain):
                         chain.chain[0].text = "\n" + chain.chain[0].text
-                    chain.chain = [*headers, *chain.chain]
+                    chain.chain = [*all_head, *chain.chain]
+                if index == len(segments) - 1 and tail_comps:
+                    chain.chain = [*chain.chain, *tail_comps]
                 await event.send(chain)
                 sent += 1
                 if index == len(segments) - 1:
@@ -527,7 +588,7 @@ class SavageReplyPlugin(Star):
                 exc,
             )
             remaining = "".join(segments[sent:])
-            result.chain = [Plain(remaining)] if remaining else []
+            result.chain = [Plain(remaining), *tail_comps] if remaining else list(tail_comps)
         finally:
             if typing_bot:
                 await set_input_status(typing_bot, typing_user, STOP_EVENT_TYPE)

@@ -72,6 +72,7 @@ class _Splitter:
         self.options = options
         self.segments: list[str] = []
         self.stack: list[str] = []
+        self.stack_start_weight: int = 0
         self._buf: list[str] = []
         self._weight = 0
 
@@ -85,10 +86,16 @@ class _Splitter:
         self._buf.append(chunk)
         self._weight += _weight_of(chunk)
 
+    def check_stack_span(self, max_span: int) -> None:
+        """成对符号跨度过大时视为单边符号（如（笑、漏闭合引号），清空栈恢复切分。"""
+        if self.stack and (self._weight - self.stack_start_weight) >= max_span:
+            self.stack.clear()
+
     def cut(self) -> None:
         chunk = "".join(self._buf).strip()
         self._buf = []
         self._weight = 0
+        self.stack.clear()
         if not chunk:
             return
         if not self.options.keep_punct:
@@ -241,19 +248,26 @@ def _split_sentences(source: str, options: ReplyOptions) -> list[str]:
                 i = end + 2
                 continue
 
-        # 7) 断点（成对符号内部不切；后接续接词/指代也不切）
+        # 7) 断点（成对符号内部不切；但单边符号或跨度超限时不阻塞切分）
+        splitter.check_stack_span(max_chars)
+        if char == "\n":
+            j = i
+            while j < n and source[j] in " \t\n":
+                j += 1
+            # 遇到连续换行时，成对符号通常不跨段落，清空栈重置
+            if "\n\n" in source[i:j]:
+                splitter.stack.clear()
+            splitter.add(source[i:j])
+            if (
+                not splitter.stack
+                and (("\n\n" in source[i:j] and splitter.weight >= 2) or splitter.weight >= min_chars)
+                and not _starts_with_binder(source, j)
+            ):
+                splitter.cut()
+            i = j
+            continue
+
         if not splitter.stack:
-            if char == "\n":
-                j = i
-                while j < n and source[j] in " \t\n":
-                    j += 1
-                splitter.add(source[i:j])
-                if (
-                    ("\n\n" in source[i:j] and splitter.weight >= 2) or splitter.weight >= min_chars
-                ) and not _starts_with_binder(source, j):
-                    splitter.cut()
-                i = j
-                continue
             if char in STRONG_PUNCT:
                 j = i
                 while j < n and source[j] in STRONG_PUNCT:
@@ -275,12 +289,15 @@ def _split_sentences(source: str, options: ReplyOptions) -> list[str]:
 
         # 8) 弹性延伸上限：走到这里说明当前是普通字符、无标点可切，强制落刀
         #    （落刀点若在英文/数字 token 内部，先让一段，别把单词/数字切成两半）
+        splitter.check_stack_span(hard_max)
         if not splitter.stack and splitter.weight >= hard_max:
             if splitter.weight >= hard_max + TOKEN_OVERFLOW_LIMIT or not _inside_token(source, i):
                 splitter.cut()
 
         # 9) 普通字符：维护成对符号栈
         if char in OPEN_CHARS:
+            if not splitter.stack:
+                splitter.stack_start_weight = splitter.weight
             splitter.stack.append(char)
         elif splitter.stack and char == PAIR_MAP.get(splitter.stack[-1]):
             splitter.stack.pop()

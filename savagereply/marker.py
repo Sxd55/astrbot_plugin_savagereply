@@ -17,7 +17,7 @@ MARKER = "[[next]]"
 
 # 容错匹配：[[next]] / [next] / 【next】 / ［next］，忽略大小写与内部空格；
 # 括号层数写歪或漏写收尾括号（[[next / [[next] / [[next]]] / [[[next]]]）也整段吃掉，
-# 不留 [ 或 ] 碎片。
+# 不留 [ 或 ] 碎片。必须包含 next 词。
 MARKER_RE = re.compile(
     r"(?:"
     r"\[{2,3}\s*next\s*\]{0,3}"
@@ -28,8 +28,9 @@ MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 标记空壳：模型把 next 写丢后留下的纯括号对（[[]]、[]、【】、［］），一并清掉。
-DEBRIS_RE = re.compile(r"(?:\[{1,2}\s*\]{1,2}|【{1,2}\s*】{1,2}|［{1,2}\s*］{1,2})")
+# 标记空壳残渣：只匹配双层以上方括号残渣（[[]]），用于模型漏写 next 时的容错清理。
+# 绝不匹配单层 [] / 【】 / ［］，避免误杀 Markdown 复选框 `- [ ]`、空列表和常规括号代码。
+DEBRIS_RE = re.compile(r"\[{2,3}\s*\]{2,3}")
 
 DEFAULT_PROMPT = (
     "【输出格式约定】如果你想把回复分成多条消息发送，"
@@ -51,7 +52,7 @@ def _has_marker(source: str, marker: str = MARKER) -> bool:
 
 
 def _marker_len(source: str, index: int, marker: str = MARKER) -> int:
-    """在 index 处匹配标记（或标记空壳），返回长度；不是标记返回 0。"""
+    """在 index 处匹配标记（或双层残渣），返回长度；不是标记返回 0。"""
     if marker == MARKER:
         match = MARKER_RE.match(source, index) or DEBRIS_RE.match(source, index)
         return match.end() - index if match else 0

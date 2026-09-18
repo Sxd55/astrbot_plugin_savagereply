@@ -332,6 +332,12 @@ class SegmentTest(unittest.TestCase):
         self.assertEqual(len(segments), 2)
         self.assertEqual(segments[-1], "要现在发吗")
 
+    def test_unbalanced_bracket_does_not_block_splitting(self):
+        # 验证单边未闭合括号（如「（笑」）不会让整个长文本的分段引擎瘫痪
+        text = "前面是一句话（笑。后面是一句很长很长的话，这里有句号。还有第三句很长很长的话！最后收尾。"
+        segments = split_text(text, opts(segment_max_chars=20, segment_hard_max_chars=40, short_tail_chars=0))
+        self.assertGreater(len(segments), 1)
+
 
 class PacingTest(unittest.TestCase):
     def test_formula_no_jitter(self):
@@ -510,12 +516,17 @@ class MarkerTest(unittest.TestCase):
     # -- 标记空壳 / 括号残渣（实机踩过：用户看到 [[]]） --------------------
 
     def test_empty_debris_removed(self):
-        for source in ("甲。[[]]乙。", "甲。[[]] 乙。", "甲。[]乙。", "甲。【】乙。", "甲。［］乙。"):
+        for source in ("甲。[[]]乙。", "甲。[[]] 乙。", "甲。[[  ]]乙。"):
             text, parts = parse_marker(source)
             self.assertNotIn("[[]]", text)
-            self.assertNotIn("[]", text)
-            self.assertNotIn("【】", text)
             self.assertEqual(text, "甲。乙。", source)
+
+    def test_single_bracket_and_checkbox_preserved(self):
+        # 验证单层空括号、Markdown 复选框、空列表不会被误当 marker 残渣吃掉
+        for source in ("- [ ] 待办事项", "arr = []", "请在【】中填写"):
+            text, parts = parse_marker(source)
+            self.assertIsNone(parts)
+            self.assertEqual(text, source)
 
     def test_unbalanced_marker_fully_consumed(self):
         for source in ("甲。[[next]乙。", "甲。[[next]]]乙。", "甲。[[[next]]]乙。", "甲。[[next乙。"):

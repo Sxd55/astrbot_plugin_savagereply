@@ -724,6 +724,34 @@ class ReplyIntegrationTest(unittest.TestCase):
         finally:
             plugin_main.request = FakeRequest()
 
+    def test_mixed_components_at_and_image_segmentation(self):
+        # 验证包含 At 与 Image 等混排组件的长消息仍能正常分段，且 At 在首段，Image 在末段
+        from astrbot.api.message_components import At, Image
+        event = make_event("写点东西", sid="10001", platform="aiocqhttp")
+        sents = []
+        async def fake_send(chain):
+            sents.append(chain)
+
+        event.send = fake_send
+
+        text = "第一句话介绍一下背景情况。[[next]]第二句话详细阐述一下核心要点。[[next]]第三句话做个最后的总结说明。"
+        at_comp = At(qq="10001")
+        img_comp = Image(file="fake.png")
+        result = make_result(text)
+        result.chain = [at_comp, Plain(text), img_comp]
+        event.set_result(result)
+
+        asyncio.run(self.plugin.on_decorating_result(event))
+        self.assertEqual(len(sents), 3)
+        # 首段包含 At 组件
+        self.assertTrue(any(isinstance(c, At) for c in sents[0].chain))
+        # 末段包含 Image 组件
+        self.assertTrue(any(isinstance(c, Image) for c in sents[-1].chain))
+        # 中间段为纯文本
+        self.assertTrue(all(isinstance(c, Plain) for c in sents[1].chain))
+        # result.chain 已清空（全部分段已成功分发）
+        self.assertEqual(len(result.chain), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
