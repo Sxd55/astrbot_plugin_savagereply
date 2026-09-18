@@ -1,4 +1,4 @@
-# Savage's Reply 实机测试流程（v0.4.3）
+# Savage's Reply 实机测试流程（v0.4.4）
 
 本轮修复：**回复头一致性**——分段连发时只有第一条带引用 / @ / 回复前缀（与框架内置分段一致），
 不再出现「前几条无引用、最后一条才带引用」。上一轮：符号清理。
@@ -37,7 +37,7 @@
    正确流程：WebUI → 插件 → Savage's Reply → **卸载**（不要勾「删除配置」「删除数据」）
    → 再上传新 zip 安装 → 重载。
 2. 加载日志期望：
-   - `Savage's Reply loaded v0.4.3`
+   - `Savage's Reply loaded v0.4.4`
    - `builtin segmented_reply is off, plugin owns segmentation`
    - 若出现 `built-in segmented_reply is ON` 警告：插件会自行发送全部消息，不会二次切割；
      但仍建议去 AstrBot 设置 → 拓展功能 → 分段回复，**关掉内置分段**。
