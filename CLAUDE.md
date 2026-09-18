@@ -33,17 +33,20 @@ tests/test_core.py      离线测试，只用标准库：python tests/test_core.
 
 - **钩子**：`@filter.on_decorating_result(priority=-100000000000000000)` 全场最低，保证
   在其他插件改完 chain 后执行；在内置分段 / TTS / 转图 / 合并转发之前。
-- **发送模式**：前 N-1 段自行 `event.send()` 后 sleep；**最后一段留在 `result.chain`** 交还
-  框架发送（保留框架的 at / 引用 / 平台适配行为，风险最小）。参照 splitter 的成熟做法。
+- **发送模式**：全部段落自行 `event.send()` 后 sleep，最后清空 `result.chain`。框架的回复头
+  （引用 / @ / 回复前缀）在钩子之后才由 ResultDecorateStage 加到 `result.chain` 上；若把
+  最后一段交还框架，会出现「前几条无引用、最后一条才带引用」。改为 `_framework_headers`
+  复刻框架行为并**只加在第一段**（与框架内置分段一致），非纯文本段（TTS）不加，与框架
+  的 `can_decorate`（仅 Plain/Image）对齐。
 - **防重入**：在 `result` 对象上打 `__savagereply_processed` 标记。不要用 event 级锁——
   Agent 工具调用会在同一 event 上产生多个 result 实例。
 - **发送失败不丢内容**：任何一段 `event.send()` 抛异常，立即停止分段，把剩余各段合并塞回
   `result.chain` 让框架兜底发送。
-- **TTS 兼容**：`_tts_active` 探测（全局 TTS 开关 + 会话开关 + provider 存在）。激活时
-  不自行发送，把各段拆成多个 Plain 塞回 `result.chain`，框架会逐段转语音再发——
-  否则会出现"前半截文字 + 最后一段语音"的混合。
-- **内置分段兼容**：`_builtin_segmented_enabled` 为真时 `hand_back=False`，最后一段也
-  自行发送并清空 chain，避免框架把最后一段二次切碎；加载时日志提示建议关闭内置分段。
+- **TTS 兼容**：`_tts_provider` 探测（全局 TTS 开关 + 会话开关 + provider 存在）。激活时
+  由插件**逐段合成语音、逐段发送**（框架只会把整条链塞进一条消息，否则会出现
+  「一整条长语音」或「文字 + 最后一段语音」的混合）；语音段不加回复头。
+- **内置分段兼容**：全部消息由插件发出（chain 清空），框架内置 `segmented_reply` 无法
+  二次切割；`_builtin_segmented_enabled` 仅用于加载时日志提示建议关闭内置分段。
 - **边界标记**：`on_llm_request` 每轮注入输出规范（`extra_user_content_parts` + `mark_as_temp`，
   不写历史不碰人格）；`_decorate` 里先用 `parse_marker` 解析，有效切分（≥2 段）时每段再走
   `segments_from_marked`（内部仍过保护区引擎），否则回落本地 policy/split。`silk` 代码块内的

@@ -7,7 +7,7 @@ import random
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
-from astrbot.api.message_components import Plain, Record
+from astrbot.api.message_components import At, Image, Plain, Record, Reply
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star, register
 from astrbot.api.web import error_response, json_response, request
@@ -418,9 +418,31 @@ class SavageReplyPlugin(Star):
             result,
             segments,
             options,
-            hand_back=not self._builtin_segmented_enabled() and tts_provider is None,
             tts_provider=tts_provider,
         )
+
+    def _framework_headers(self, event: AstrMessageEvent) -> tuple[list, str]:
+        """复刻框架 ResultDecorateStage 的回复头：引用 / @ / 回复前缀。
+
+        框架在 on_decorating_result 之后才把这些加进 result.chain；插件全部自行发送后
+        必须自己补上，且只补在第一段（与框架内置分段行为一致）。
+        """
+        try:
+            settings = dict(self.context.get_config().get("platform_settings") or {})
+        except Exception:  # noqa: BLE001
+            settings = {}
+        headers: list = []
+        if settings.get("reply_with_quote"):
+            message_id = ""
+            try:
+                message_id = str(getattr(event.message_obj, "message_id", "") or "")
+            except Exception:  # noqa: BLE001
+                message_id = ""
+            if message_id:
+                headers.append(Reply(id=message_id))
+        if settings.get("reply_with_mention") and not event.is_private_chat():
+            headers.append(At(qq=event.get_sender_id(), name=event.get_sender_name()))
+        return headers, str(settings.get("reply_prefix") or "")
 
     async def _send_segments(
         self,
@@ -428,13 +450,13 @@ class SavageReplyPlugin(Star):
         result,
         segments: list[str],
         options: ReplyOptions,
-        hand_back: bool = True,
         tts_provider=None,
     ) -> None:
-        """前 N-1 段自行发送；最后一段默认留在 result.chain 交给框架。
+        """逐段自行发送并清空 result.chain。
 
-        hand_back=False（内置分段开启、或 TTS 逐段合成时）：最后一段也自行发送并清空
-        chain，避免框架把最后一段二次切碎 / 把多段合并成一条消息。
+        框架的回复头（引用 / @ / 回复前缀）在钩子之后才加到 result.chain 上；若把最后
+        一段交还框架，会出现「前几段无引用、最后一段带引用」。这里全部自行发送，并把
+        框架会加的回复头复刻到第一段（非纯文本段不加，与框架 can_decorate 一致）。
         tts_provider 非空时逐段合成语音发送（框架的 TTS 只会把整条链塞进一条消息）。
         """
         sent = 0
@@ -457,6 +479,7 @@ class SavageReplyPlugin(Star):
             else False
         )
 
+        headers, prefix = self._framework_headers(event)
         first_delay = read_delay(options) if budget > 0 else 0.0
         first_delay = min(first_delay, budget)
         try:
@@ -470,13 +493,17 @@ class SavageReplyPlugin(Star):
                 budget = max(0.0, budget - first_delay)
 
             for index, segment in enumerate(segments):
-                is_last = index == len(segments) - 1
-                if is_last and hand_back:
-                    result.chain = [Plain(segment)]
-                    return
-                await event.send(await self._segment_chain(segment, tts_provider))
+                text = f"{prefix}{segment}" if index == 0 and prefix else segment
+                chain = await self._segment_chain(text, tts_provider)
+                if index == 0 and headers and all(
+                    isinstance(comp, (Plain, Image)) for comp in chain.chain
+                ):
+                    if isinstance(headers[-1], At) and isinstance(chain.chain[0], Plain):
+                        chain.chain[0].text = "\n" + chain.chain[0].text
+                    chain.chain = [*headers, *chain.chain]
+                await event.send(chain)
                 sent += 1
-                if is_last:
+                if index == len(segments) - 1:
                     result.chain = []
                     return
                 delay = segment_delay(segments[index + 1], options)

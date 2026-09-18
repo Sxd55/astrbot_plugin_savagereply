@@ -37,7 +37,7 @@ try:
         MessageEventResult,
         ResultContentType,
     )
-    from astrbot.api.message_components import Image, Plain
+    from astrbot.api.message_components import At, Image, Plain, Reply
     from astrbot.api.provider import ProviderRequest
     from astrbot.core.platform.astrbot_message import (
         AstrBotMessage,
@@ -123,6 +123,7 @@ def make_event(text, sid="u1", name="阿U", group="1", platform="aiocqhttp"):
     msg.sender = MessageMember(user_id=sid, nickname=name)
     msg.message = [Plain(text)]
     msg.message_str = text
+    msg.message_id = "10001"
     if group:
         msg.group_id = group
     meta = PlatformMetadata(name=platform, description="test", id=platform)
@@ -308,16 +309,15 @@ class ReplyIntegrationTest(unittest.TestCase):
 
     # -- split flow -------------------------------------------------------
 
-    def test_long_reply_splits_and_hands_back_last(self):
+    def test_long_reply_splits_all_segments(self):
         text = "我今天下午去了一趟书店，买了两本小说。一本是科幻，一本是推理，都很喜欢。你要不要借去看？"
         _event, result, sent = self._decorate(text)
         # 末尾问句不再并进上一条，单独作为最后一条（P0）。
-        self.assertEqual(len(sent), 2)
+        self.assertEqual(len(sent), 3)
         self.assertIn("买了两本小说", sent[0])
         self.assertNotIn("[[next]]", sent[0])
-        tail = chain_text(result.chain)
-        self.assertEqual(tail, "你要不要借去看？")
-        self.assertNotIn("[[next]]", tail)
+        self.assertEqual(sent[-1], "你要不要借去看？")
+        self.assertEqual(result.chain, [])
         self.assertTrue(getattr(result, "_savagereply_processed", False))
 
     def test_long_reply_uses_paragraph_path(self):
@@ -370,9 +370,10 @@ class ReplyIntegrationTest(unittest.TestCase):
     def test_marker_split_and_stripped(self):
         text = "第一条消息内容足够长了。[[next]]第二条消息内容也足够长了。[[next]]第三条也足够长了。"
         _event, result, sent = self._decorate(text)
-        self.assertEqual(len(sent), 2)
-        for chunk in sent + [chain_text(result.chain)]:
+        self.assertEqual(len(sent), 3)
+        for chunk in sent:
             self.assertNotIn("[[next]]", chunk)
+        self.assertEqual(result.chain, [])
 
     def test_marker_leak_on_bypass_is_fixed(self):
         self.plugin.config["marker_enabled"] = False
@@ -402,6 +403,88 @@ class ReplyIntegrationTest(unittest.TestCase):
         _event, result, sent = self._decorate(text)
         self.assertEqual(len(sent), 3)
         self.assertEqual(result.chain, [])
+
+    # -- framework reply headers（引用 / @ / 回复前缀） -----------------------
+
+    def _decorate_chains(self, text, platform_settings, group="1"):
+        self.ctx.astrbot_config = {"platform_settings": platform_settings}
+        event = make_event(text, group=group)
+        result = make_result(text)
+        event.set_result(result)
+        sent = []
+
+        async def fake_send(chain):
+            sent.append(chain)
+
+        event.send = fake_send
+        asyncio.run(self.plugin.on_decorating_result(event))
+        return event, result, sent
+
+    def test_quote_only_on_first_segment(self):
+        text = "我今天下午去了一趟书店，买了两本小说。一本是科幻，一本是推理，都很喜欢。你要不要借去看？"
+        _event, result, sent = self._decorate_chains(text, {"reply_with_quote": True})
+        self.assertGreaterEqual(len(sent), 2)
+        self.assertIsInstance(sent[0].chain[0], Reply)
+        self.assertEqual(sent[0].chain[0].id, "10001")
+        for chain in sent[1:]:
+            self.assertTrue(all(not isinstance(comp, Reply) for comp in chain.chain))
+        self.assertEqual(result.chain, [])
+
+    def test_mention_only_on_first_segment(self):
+        text = "我今天下午去了一趟书店，买了两本小说。一本是科幻，一本是推理，都很喜欢。你要不要借去看？"
+        _event, _result, sent = self._decorate_chains(text, {"reply_with_mention": True})
+        self.assertGreaterEqual(len(sent), 2)
+        self.assertIsInstance(sent[0].chain[0], At)
+        self.assertTrue(sent[0].chain[1].text.startswith("\n"))
+        for chain in sent[1:]:
+            self.assertTrue(all(not isinstance(comp, At) for comp in chain.chain))
+
+    def test_mention_skipped_in_private_chat(self):
+        text = "我今天下午去了一趟书店，买了两本小说。一本是科幻，一本是推理，都很喜欢。你要不要借去看？"
+        _event, _result, sent = self._decorate_chains(text, {"reply_with_mention": True}, group="")
+        self.assertTrue(sent)
+        for chain in sent:
+            self.assertTrue(all(not isinstance(comp, At) for comp in chain.chain))
+
+    def test_reply_prefix_only_on_first_segment(self):
+        text = "我今天下午去了一趟书店，买了两本小说。一本是科幻，一本是推理，都很喜欢。你要不要借去看？"
+        _event, _result, sent = self._decorate_chains(text, {"reply_prefix": "【铃】"})
+        self.assertGreaterEqual(len(sent), 2)
+        self.assertTrue(sent[0].chain[0].text.startswith("【铃】"))
+        for chain in sent[1:]:
+            self.assertFalse(chain.chain[0].text.startswith("【铃】"))
+
+    def test_quote_and_mention_order_matches_framework(self):
+        text = "我今天下午去了一趟书店，买了两本小说。一本是科幻，一本是推理，都很喜欢。你要不要借去看？"
+        _event, _result, sent = self._decorate_chains(
+            text, {"reply_with_quote": True, "reply_with_mention": True}
+        )
+        kinds = [type(comp).__name__ for comp in sent[0].chain]
+        self.assertEqual(kinds[:2], ["Reply", "At"])
+        self.assertTrue(sent[0].chain[2].text.startswith("\n"))
+
+    def test_tts_segments_skip_framework_headers(self):
+        provider = self._voice_provider()
+        restore = self._with_tts(provider)
+        try:
+            self.ctx.astrbot_config["platform_settings"] = {"reply_with_quote": True}
+            text = "第一段话要写长一点点，凑够最短分段字数的要求。第二段话也写长一些，确保能被算成候选。"
+            event = make_event(text, group="1")
+            result = make_result(text)
+            event.set_result(result)
+            sent = []
+
+            async def fake_send(chain):
+                sent.append(chain)
+
+            event.send = fake_send
+            asyncio.run(self.plugin.on_decorating_result(event))
+            self.assertGreaterEqual(len(sent), 2)
+            for chain in sent:
+                self.assertTrue(all(not isinstance(comp, Reply) for comp in chain.chain))
+            self.assertEqual(result.chain, [])
+        finally:
+            restore()
 
     # -- tts -------------------------------------------------------------------
 
@@ -515,8 +598,9 @@ class ReplyIntegrationTest(unittest.TestCase):
             asyncio.run(self.plugin.on_decorating_result(event))
 
             self.assertEqual(provider.calls, [])
-            self.assertEqual(len(sent), 1)
-            self.assertIn("第二段话", chain_text(result.chain))
+            self.assertEqual(len(sent), 2)
+            self.assertIn("第二段话", "".join(chain_text(chain.chain) for chain in sent))
+            self.assertEqual(result.chain, [])
         finally:
             restore()
 
@@ -525,8 +609,8 @@ class ReplyIntegrationTest(unittest.TestCase):
     def test_single_bracket_marker_splits_live(self):
         text = "嘴上带刺。[next]底下是软的。[next]还有一句。"
         _event, result, sent = self._decorate(text)
-        self.assertEqual(len(sent), 2)
-        joined = "".join(sent) + chain_text(result.chain)
+        self.assertEqual(len(sent), 3)
+        joined = "".join(sent)
         self.assertNotIn("[next]", joined)
         self.assertIn("底下是软的", joined)
 

@@ -2,7 +2,7 @@
 
 **Savage's Reply** 是面向 AstrBot 的「发送前人味化」插件：把 LLM 的长回复按语义切成短句逐条发出，并模拟真人打字节奏；同时保护代码块、表格、公式和超长正文——完整性优先，绝不因为拟人化丢内容。
 
-当前版本 `v0.4.2`。要求 AstrBot `>= 4.22.0`；离线测试只需 Python 3.11+ 标准库。
+当前版本 `v0.4.3`。要求 AstrBot `>= 4.22.0`；离线测试只需 Python 3.11+ 标准库。
 
 ---
 
@@ -55,9 +55,9 @@ AstrBot WebUI → 插件 → Savage's Reply → 打开插件页面，是一本�
     1. 规则分流：含代码块/表格/公式/超长 → 原样放行（完整性保护）
     2. 风险扫描（可选）：命中只记录，不阻塞
     3. 智能分段：保护区 → 区间断点 → 短尾合并 → 段数上限
-4. 逐段发送：前 N-1 段自己发，最后一段交还框架（保留 @/引用行为）
+4. 逐段发送：全部由插件发出；第一段复刻框架的引用 / @ / 回复前缀，其余段保持干净（与内置分段行为一致）
    （打字延迟开启时）每条之间等待「打字下一段」的时间，失败自动合并剩余内容兜底
-   特殊：TTS 激活时插件逐段合成语音（可选 dual_output 同时补文字），仍按分段节奏发送；内置分段仍开启时全部自行发送避免二次切割
+   特殊：TTS 激活时插件逐段合成语音（可选 dual_output 同时补文字），仍按分段节奏发送；内置分段开启时同样全部自行发送，不会二次切割
     ↓
 [框架内置] 分段 / TTS / 转图 / 合并转发（已关内置分段则不受影响）
     ↓
@@ -151,7 +151,7 @@ python tests/test_core.py -v
 
 ## 八、灵感与边界
 
-- 分段保护（代码块/表格/成对符号）、发送模式（最后一段交还框架）、双保险防重入：参考 [astrbot_plugin_splitter](https://github.com/nuomicici/astrbot_plugin_splitter) 的公开实现思路。
+- 分段保护（代码块/表格/成对符号）、双保险防重入：参考 [astrbot_plugin_splitter](https://github.com/nuomicici/astrbot_plugin_splitter) 的公开实现思路；发送模式改为全部自行发送并把框架回复头复刻到第一段（修正「只有最后一段带引用」的不一致）。
 - 区间断点、弹性延伸、短尾合并：参考 [astrbot_plugin_custome_segment_reply](https://github.com/LinJohn8/astrbot_plugin_custome_segment_reply)。
 - 输出管道定位（13 阶梯）：参考 [astrbot_plugin_outputpro](https://github.com/Zhalslar/astrbot_plugin_outputpro)。
 - 打字节奏模型（每字耗时 × 抖动、首条立即、气泡间隔）：参考 typecaast、CipherTalk、OpenClaw 等项目的通用实践。
