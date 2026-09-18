@@ -110,6 +110,17 @@ class ReplyOptions:
     verify_log_only: bool = True
     verify_suffix_text: str = "（这条细节我不太确定，你用到时再核实一下）"
     verify_absolute_words: list[str] = field(default_factory=lambda: list(DEFAULT_ABSOLUTE_WORDS))
+    active_reply_enabled: bool = False
+    active_reply_mode: str = "smart"
+    active_reply_probability: float = 0.05
+    active_reply_keywords: list[str] = field(default_factory=list)
+    active_reply_bot_names: list[str] = field(default_factory=list)
+    active_reply_cooldown: float = 60.0
+    active_reply_daily_limit: int = 50
+    active_reply_unanswered_break: bool = True
+    active_reply_unanswered_seconds: float = 25.0
+    active_reply_quiet_hours: str = "23:00-07:00"
+    active_reply_groups: list[str] = field(default_factory=list)
 
     @classmethod
     def from_config(cls, raw: Any) -> ReplyOptions:
@@ -156,6 +167,17 @@ class ReplyOptions:
                 data.get("verify_absolute_words"),
                 DEFAULT_ABSOLUTE_WORDS,
             ),
+            active_reply_enabled=_as_bool(data.get("active_reply_enabled"), False),
+            active_reply_mode=_as_str(data.get("active_reply_mode"), "smart"),
+            active_reply_probability=_as_float(data.get("active_reply_probability"), 0.05),
+            active_reply_keywords=_as_str_list(data.get("active_reply_keywords"), []),
+            active_reply_bot_names=_as_str_list(data.get("active_reply_bot_names"), []),
+            active_reply_cooldown=_as_float(data.get("active_reply_cooldown"), 60.0),
+            active_reply_daily_limit=_as_int(data.get("active_reply_daily_limit"), 50),
+            active_reply_unanswered_break=_as_bool(data.get("active_reply_unanswered_break"), True),
+            active_reply_unanswered_seconds=_as_float(data.get("active_reply_unanswered_seconds"), 25.0),
+            active_reply_quiet_hours=_as_str(data.get("active_reply_quiet_hours"), "23:00-07:00"),
+            active_reply_groups=_as_str_list(data.get("active_reply_groups"), []),
         )
         return options.clamped()
 
@@ -176,4 +198,8 @@ class ReplyOptions:
         self.delay_total_max_seconds = max(0.0, self.delay_total_max_seconds)
         self.read_delay_min_seconds = max(0.0, self.read_delay_min_seconds)
         self.read_delay_max_seconds = max(self.read_delay_min_seconds, self.read_delay_max_seconds)
+        self.active_reply_probability = min(max(0.0, self.active_reply_probability), 1.0)
+        self.active_reply_cooldown = max(0.0, self.active_reply_cooldown)
+        self.active_reply_daily_limit = max(0, self.active_reply_daily_limit)
+        self.active_reply_unanswered_seconds = max(3.0, self.active_reply_unanswered_seconds)
         return self

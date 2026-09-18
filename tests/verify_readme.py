@@ -5,7 +5,7 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path(r"C:\Users\24122\Desktop\astrbot_plugin_savagereply")
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 SCHEMA = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
 MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
@@ -42,6 +42,17 @@ LABEL = {
     "debug_log": "调试日志", "verify_enabled": "风险扫描",
     "verify_log_only": "风险扫描仅记录", "verify_suffix_text": "不确定提示后缀",
     "verify_absolute_words": "可疑承诺词表",
+    "active_reply_enabled": "免@主动接话总开关",
+    "active_reply_mode": "接话模式",
+    "active_reply_probability": "接话基础概率",
+    "active_reply_keywords": "触发关键词",
+    "active_reply_bot_names": "称呼白名单",
+    "active_reply_cooldown": "群接话冷却时间",
+    "active_reply_daily_limit": "单群每日接话上限",
+    "active_reply_unanswered_break": "问句冷场打破",
+    "active_reply_unanswered_seconds": "冷场等待秒数",
+    "active_reply_quiet_hours": "夜间免打扰时段",
+    "active_reply_groups": "生效群白名单",
 }
 table = README.split("## 五、配置项")[1].split("\n---\n")[0]
 for key in sorted(SCHEMA):

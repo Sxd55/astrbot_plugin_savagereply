@@ -208,5 +208,71 @@
     "type": "list",
     "hint": "回复中出现这些词会被记录为高风险，可按需增删。",
     "default": ["100%", "百分之百", "绝对能", "绝对会", "绝对不可能", "包治", "稳赚", "零风险", "保证成功", "保证有效"]
+  },
+  "active_reply_enabled": {
+    "description": "【群聊活跃】免@主动接话总开关",
+    "type": "bool",
+    "hint": "开启后，Bot 能够自然融入群聊，智能搭话与打破冷场，且自带防插嘴机制。",
+    "default": false
+  },
+  "active_reply_mode": {
+    "description": "【群聊活跃】接话模式",
+    "type": "string",
+    "hint": "可选：smart（智能感知：称呼必回+问句加权+适度概率）、probability（纯概率）、keywords（关键词触发）。",
+    "default": "smart"
+  },
+  "active_reply_probability": {
+    "description": "【群聊活跃】接话基础概率",
+    "type": "float",
+    "hint": "smart 或 probability 模式下对常规群消息接话的基础几率（0.01~1.0），推荐 0.03~0.08。",
+    "default": 0.05
+  },
+  "active_reply_keywords": {
+    "description": "【群聊活跃】触发关键词",
+    "type": "list",
+    "hint": "群友发言包含这些词时触发接话（keywords 模式强依赖，smart 模式优先匹配）。",
+    "default": []
+  },
+  "active_reply_bot_names": {
+    "description": "【群聊活跃】称呼白名单",
+    "type": "list",
+    "hint": "群友虽未@但提到了这些名字（如“小助手”、“Savage”），视为呼叫 Bot 立即接话。",
+    "default": []
+  },
+  "active_reply_cooldown": {
+    "description": "【群聊活跃】群接话冷却时间（秒）",
+    "type": "float",
+    "hint": "同一群内两次主动接话之间的最小间隔时间，防止频刷惹人嫌。",
+    "default": 60.0
+  },
+  "active_reply_daily_limit": {
+    "description": "【群聊活跃】单群每日接话上限（次）",
+    "type": "int",
+    "hint": "单群每天最多主动接话多少次，0 为不限。",
+    "default": 50
+  },
+  "active_reply_unanswered_break": {
+    "description": "【群聊活跃】问句冷场打破",
+    "type": "bool",
+    "hint": "群友提出问句后，若一段时间内无人理会，Bot 主动插话解答救场。",
+    "default": true
+  },
+  "active_reply_unanswered_seconds": {
+    "description": "【群聊活跃】冷场等待秒数",
+    "type": "float",
+    "hint": "问句发出后观察多少秒群内无人应答才触发救场接话，建议 15~30 秒。",
+    "default": 25.0
+  },
+  "active_reply_quiet_hours": {
+    "description": "【群聊活跃】夜间免打扰时段",
+    "type": "string",
+    "hint": "格式如 23:00-07:00，多个区间分号分隔。该时段内彻底保持安静，不主动接话。",
+    "default": "23:00-07:00"
+  },
+  "active_reply_groups": {
+    "description": "【群聊活跃】生效群白名单",
+    "type": "list",
+    "hint": "填入群号列表（如 [\"123456\", \"789012\"]）。留空表示对 Bot 所在的所有群生效。",
+    "default": []
   }
 }

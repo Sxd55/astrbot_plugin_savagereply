@@ -1,2 +1,2 @@
 PLUGIN_NAME = "astrbot_plugin_savagereply"
-__version__ = "0.4.4"
+__version__ = "0.5.0"

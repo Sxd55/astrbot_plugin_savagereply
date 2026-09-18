@@ -32,6 +32,7 @@ try:
         should_show_typing,
     )
     from .savagereply.verify import scan_risks
+    from .savagereply.gate import ActiveGate
 except ImportError:
     from savagereply import PLUGIN_NAME, __version__
     from savagereply.config import (
@@ -52,6 +53,7 @@ except ImportError:
         should_show_typing,
     )
     from savagereply.verify import scan_risks
+    from savagereply.gate import ActiveGate
 
 MIN_PRIORITY = -100000000000000000
 
@@ -68,6 +70,8 @@ BOOL_CONFIG_KEYS = (
     "strip_markdown_marks",
     "verify_enabled",
     "verify_log_only",
+    "active_reply_enabled",
+    "active_reply_unanswered_break",
 )
 
 INT_CONFIG_KEYS = (
@@ -79,6 +83,7 @@ INT_CONFIG_KEYS = (
     "max_segments",
     "short_tail_chars",
     "paragraph_max_chars",
+    "active_reply_daily_limit",
 )
 
 FLOAT_CONFIG_KEYS = (
@@ -90,11 +95,17 @@ FLOAT_CONFIG_KEYS = (
     "delay_total_max_seconds",
     "read_delay_min_seconds",
     "read_delay_max_seconds",
+    "active_reply_probability",
+    "active_reply_cooldown",
+    "active_reply_unanswered_seconds",
 )
 
 LIST_CONFIG_KEYS = (
     "platform_exclude",
     "session_blacklist",
+    "active_reply_keywords",
+    "active_reply_bot_names",
+    "active_reply_groups",
 )
 
 
@@ -127,6 +138,7 @@ class SavageReplyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None):
         super().__init__(context)
         self.config = config or {}
+        self.gate = ActiveGate()
         self._register_pages()
         logger.info("Savage's Reply loaded v%s", __version__)
 
@@ -170,6 +182,17 @@ class SavageReplyPlugin(Star):
             "verify_log_only": options.verify_log_only,
             "platform_exclude": list(options.platform_exclude),
             "session_blacklist": list(options.session_blacklist),
+            "active_reply_enabled": options.active_reply_enabled,
+            "active_reply_mode": options.active_reply_mode,
+            "active_reply_probability": options.active_reply_probability,
+            "active_reply_keywords": list(options.active_reply_keywords),
+            "active_reply_bot_names": list(options.active_reply_bot_names),
+            "active_reply_cooldown": options.active_reply_cooldown,
+            "active_reply_daily_limit": options.active_reply_daily_limit,
+            "active_reply_unanswered_break": options.active_reply_unanswered_break,
+            "active_reply_unanswered_seconds": options.active_reply_unanswered_seconds,
+            "active_reply_quiet_hours": options.active_reply_quiet_hours,
+            "active_reply_groups": list(options.active_reply_groups),
         }
 
     async def page_config(self):
@@ -221,6 +244,155 @@ class SavageReplyPlugin(Star):
             logger.info(
                 "Savage's Reply: builtin segmented_reply is off, plugin owns segmentation.",
             )
+
+    @staticmethod
+    def _extract_target_ids(event: AstrMessageEvent) -> list[str]:
+        targets: list[str] = []
+        try:
+            msg_obj = getattr(event, "message_obj", None)
+            comps = getattr(msg_obj, "message", []) or []
+            for comp in comps:
+                if isinstance(comp, At):
+                    target = getattr(comp, "qq", None) or getattr(comp, "target", None)
+                    if target is not None:
+                        targets.append(str(target))
+                elif isinstance(comp, Reply):
+                    sender = getattr(comp, "sender", None)
+                    if sender:
+                        sid = getattr(sender, "user_id", None) or getattr(sender, "id", None)
+                        if sid is not None:
+                            targets.append(str(sid))
+        except Exception:  # noqa: BLE001
+            pass
+        return targets
+
+    async def _reinject(self, event: AstrMessageEvent, text: str) -> None:
+        """重新以唤醒状态将消息投递回 AstrBot 事件总线（打破冷场）。"""
+        try:
+            from astrbot.core.message.components import Plain
+            from astrbot.core.star.star_tools import StarTools
+
+            msg_obj = getattr(event, "message_obj", None)
+            if not msg_obj:
+                return
+            message = await StarTools.create_message(
+                type=str(getattr(msg_obj.type, "value", "group")),
+                self_id=event.get_self_id(),
+                session_id=event.session_id,
+                sender=msg_obj.sender,
+                message=[Plain(text)],
+                message_str=text,
+                group_id=event.get_group_id() or "",
+                message_id=msg_obj.message_id,
+            )
+            await StarTools.create_event(
+                abm=message,
+                platform=event.get_platform_name(),
+                is_wake=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Savage's Reply reinject failed: %s", exc)
+
+    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
+    async def on_group_message(self, event: AstrMessageEvent):
+        """真人群聊活跃接话与冷场打破门禁。"""
+        try:
+            options = ReplyOptions.from_config(self.config)
+            group_id = str(event.get_group_id() or "")
+            sender_id = str(event.get_sender_id() or "")
+            text = str(event.message_str or "").strip()
+            bot_id = str(event.get_self_id() or "")
+            target_ids = self._extract_target_ids(event)
+            is_wake = getattr(event, "is_at_or_wake_command", False) or event.is_wake_up()
+
+            # 内存环形队列实时记录群聊话轮上下文
+            self.gate.record_turn(
+                group_id=group_id,
+                sender_id=sender_id,
+                text=text,
+                target_ids=target_ids,
+                is_at_bot=is_wake,
+            )
+
+            if not options.active_reply_enabled:
+                return
+            if is_wake:
+                return
+
+            handled = bool(
+                event.get_result()
+                or event.get_extra("provider_request")
+                or getattr(event, "_has_send_oper", False)
+            )
+            is_self = bool(bot_id and sender_id == bot_id)
+
+            bot_names = list(options.active_reply_bot_names)
+            if not bot_names:
+                try:
+                    cfg_name = self.context.get_config().get("bot_name")
+                    if cfg_name:
+                        bot_names.append(str(cfg_name))
+                except Exception:  # noqa: BLE001
+                    pass
+
+            fire, reason = self.gate.evaluate(
+                enabled=options.active_reply_enabled,
+                is_group=bool(group_id),
+                group_id=group_id,
+                sender_id=sender_id,
+                text=text,
+                target_ids=target_ids,
+                bot_id=bot_id,
+                bot_names=bot_names,
+                mode=options.active_reply_mode,
+                probability=options.active_reply_probability,
+                keywords=options.active_reply_keywords,
+                groups_whitelist=options.active_reply_groups,
+                quiet_hours=options.active_reply_quiet_hours,
+                cooldown=options.active_reply_cooldown,
+                daily_limit=options.active_reply_daily_limit,
+                already_handled=handled,
+                is_self=is_self,
+            )
+
+            if fire:
+                event.is_at_or_wake_command = True
+                event.set_extra("_savage_active_reply", True)
+                self.gate.mark_fired(group_id)
+                if options.debug_log:
+                    logger.info(
+                        "Savage's Reply active gate fired: reason=%s group=%s text=%s",
+                        reason,
+                        group_id,
+                        text[:40],
+                    )
+                return
+
+            # 冷场打破延时调度
+            if options.active_reply_unanswered_break and self.gate.is_question_candidate(text):
+                delay = options.active_reply_unanswered_seconds
+
+                async def _do_unanswered_reply():
+                    freq_ok, _ = self.gate.rate_limiter.check(
+                        group_id=group_id,
+                        cooldown=options.active_reply_cooldown,
+                        daily_limit=options.active_reply_daily_limit,
+                    )
+                    if not freq_ok:
+                        return
+                    self.gate.mark_fired(group_id)
+                    if options.debug_log:
+                        logger.info("Savage's Reply cold break fired for: %s", text[:40])
+                    await self._reinject(event, text)
+
+                self.gate.schedule_unanswered(
+                    group_id=group_id,
+                    delay_seconds=delay,
+                    asker_id=sender_id,
+                    callback=_do_unanswered_reply,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Savage's Reply active gate error: %s", exc)
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=MIN_PRIORITY)
     async def on_message(self, event: AstrMessageEvent):
