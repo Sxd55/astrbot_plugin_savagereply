@@ -14,6 +14,9 @@
   "platform_exclude": {
     "description": "跳过的平台",
     "type": "list",
+    "items": {"type": "string"},
+    "options": ["qq_official", "qq_official_webhook", "weixin_official_account", "dingtalk", "lark", "telegram", "discord"],
+    "labels": ["QQ官方机器人", "QQ官方Webhook", "微信公众号", "钉钉", "飞书", "Telegram", "Discord"],
     "hint": "这些平台不支持或限制多条连发，回复原样发送。",
     "default": ["qq_official", "qq_official_webhook", "weixin_official_account", "dingtalk"]
   },
@@ -218,7 +221,9 @@
   "active_reply_mode": {
     "description": "【群聊活跃】接话模式",
     "type": "string",
-    "hint": "可选：smart（智能感知：称呼必回+问句加权+适度概率）、probability（纯概率）、keywords（关键词触发）。",
+    "options": ["smart", "probability", "keywords"],
+    "labels": ["智能感知（称呼必回 + 问句加权 + 适度概率）", "纯概率随机搭话", "关键词精准触发"],
+    "hint": "直接下拉选择接话模式：推荐 smart 智能感知模式，自然灵动且防惹人嫌。",
     "default": "smart"
   },
   "active_reply_probability": {

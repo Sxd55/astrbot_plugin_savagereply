@@ -788,3 +788,73 @@ class SavageReplyPlugin(Star):
                 await event.stop_typing()
         except Exception as exc:  # noqa: BLE001
             logger.debug("Savage's Reply framework typing skipped: %s", exc)
+
+    @filter.command_group("savage")
+    def savage(self):
+        """Savage 系列插件生态指令"""
+
+    @savage.command("doctor")
+    async def cmd_doctor(self, event: AstrMessageEvent):
+        """一键诊断 Savage 全家桶插件生态运行状态"""
+        yield event.plain_result(self._build_doctor_report())
+
+    def _build_doctor_report(self) -> str:
+        options = ReplyOptions.from_config(self.config)
+        stars = []
+        try:
+            stars = self.context.get_all_stars() or []
+        except Exception:  # noqa: BLE001
+            pass
+
+        star_map = {}
+        for s in stars:
+            name = getattr(s, "name", None) or getattr(s, "root_dir_name", "") or ""
+            star_map[str(name).strip().lower()] = s
+
+        lines = [
+            "╔══ Savage 插件生态健康体检卡 ══╗",
+        ]
+
+        # 1. L0 savagemode
+        sm = star_map.get("astrbot_plugin_savagemode") or star_map.get("savagemode")
+        if sm:
+            sm_ver = getattr(sm, "version", "已加载")
+            lines.append(f"• [L0 设定层] savagemode: ✅ 正常运行 ({sm_ver})")
+        else:
+            lines.append("• [L0 设定层] savagemode: ⚪ 未检测到（可选）")
+
+        # 2. L1 savagetype
+        st = star_map.get("astrbot_plugin_savagetype") or star_map.get("savagetype")
+        if st:
+            st_ver = getattr(st, "version", "已加载")
+            st_cfg = getattr(st, "config", {}) or {}
+            preset = st_cfg.get("config_preset", "daily") if isinstance(st_cfg, dict) else "daily"
+            lines.append(f"• [L1 记忆层] savagetype: ✅ 正常运行 ({st_ver}) | 预设: {preset}")
+        else:
+            lines.append("• [L1 记忆层] savagetype: ⚪ 未检测到（可选）")
+
+        # 3. L2 savagereply
+        lines.append(
+            f"• [L2 交互层] savagereply: ✅ 正常运行 (v{__version__}) | 接话: {'开启' if options.active_reply_enabled else '关闭'} | 模式: {options.active_reply_mode}"
+        )
+
+        # 4. L3 bili_learn
+        bl = star_map.get("astrbot_plugin_bili_learn") or star_map.get("bili_learn")
+        if bl:
+            bl_ver = getattr(bl, "version", "已加载")
+            lines.append(f"• [L3 知识层] bili_learn: ✅ 正常运行 ({bl_ver})")
+        else:
+            lines.append("• [L3 知识层] bili_learn: ⚪ 未检测到（可选）")
+
+        lines.append("╠══ 优化与环境建议 ══════════════╣")
+        builtin_seg = self._builtin_segmented_enabled()
+        if builtin_seg:
+            lines.append("⚠️ AstrBot 内置「分段回复」处于开启状态，建议在系统设置中将其关闭以避免二次切断。")
+        else:
+            lines.append("✅ 内置分段已关闭，由 savagereply 独占接管，处于最佳状态。")
+
+        if st and options.active_reply_enabled:
+            lines.append("✅ 检测到 savagetype 与 savagereply 双核运行，双端协同握手避让已生效。")
+
+        lines.append("╚════════════════════════════════╝")
+        return "\n".join(lines)

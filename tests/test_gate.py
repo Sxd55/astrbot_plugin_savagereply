@@ -2,7 +2,11 @@
 
 import asyncio
 import datetime
+import pathlib
+import sys
 import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from savagereply.gate.active import (
     ActiveReplyRateLimiter,
@@ -219,6 +223,42 @@ class TestUnansweredSchedulerAsync(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.15)
         # 应该被静默阻止，没有触发 Bot 救场
         self.assertEqual(len(fired), 0)
+
+
+class TestSavageDoctor(unittest.TestCase):
+    def test_build_doctor_report(self):
+        class MockContext:
+            def get_all_stars(self):
+                class StarA:
+                    name = "astrbot_plugin_savagemode"
+                    version = "v0.2.1"
+                class StarB:
+                    name = "astrbot_plugin_savagetype"
+                    version = "v5.5.0"
+                    config = {"config_preset": "frugal"}
+                return [StarA(), StarB()]
+
+            def get_config(self):
+                return {}
+
+            def register_web_api(self, *args, **kwargs):
+                pass
+
+        import sys
+        import pathlib
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+        try:
+            from main import SavageReplyPlugin
+        except ImportError:
+            raise unittest.SkipTest("astrbot not installed in current environment")
+
+        plugin = SavageReplyPlugin(MockContext(), config={"active_reply_enabled": True})
+        report = plugin._build_doctor_report()
+        self.assertIn("Savage 插件生态健康体检卡", report)
+        self.assertIn("savagemode: ✅ 正常运行", report)
+        self.assertIn("savagetype: ✅ 正常运行", report)
+        self.assertIn("预设: frugal", report)
+        self.assertIn("双端协同握手避让已生效", report)
 
 
 if __name__ == "__main__":
