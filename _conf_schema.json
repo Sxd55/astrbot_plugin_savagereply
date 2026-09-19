@@ -184,6 +184,12 @@
     "hint": "含 $$ 块级公式的回复整条发送。",
     "default": true
   },
+  "protect_structured_data": {
+    "description": "保护数据与分析列表",
+    "type": "bool",
+    "hint": "回复包含 3 项以上序号列表、数据指标清单或结构化分析时整条不分段，保证数据与分析完整。",
+    "default": true
+  },
   "strip_markdown_marks": {
     "description": "去掉 ** 加粗标记",
     "type": "bool",

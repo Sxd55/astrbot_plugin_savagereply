@@ -33,6 +33,8 @@ def decide(text: str, options: ReplyOptions) -> Decision:
         return Decision(MODE_BYPASS, "table")
     if options.protect_math and _BLOCK_MATH.search(stripped):
         return Decision(MODE_BYPASS, "math")
+    if getattr(options, "protect_structured_data", True) and is_structured_analysis(stripped):
+        return Decision(MODE_BYPASS, "structured_data")
     length = len(stripped)
     if options.max_total_chars > 0 and length > options.max_total_chars:
         if length <= options.max_total_chars * LONG_SPLIT_FACTOR:
@@ -56,3 +58,45 @@ def is_markdown_table(text: str) -> bool:
         else:
             run = 0
     return False
+
+
+_LIST_ITEM_RE = re.compile(
+    r"^\s*(?:\d+[\.、\)]|\(\d+\)|[①②③④⑤⑥⑦⑧⑨⑩]|[-*•]\s+).+"
+)
+_KEY_VALUE_RE = re.compile(
+    r"^\s*[-*•]?\s*[\u4e00-\u9fa5\w]{2,16}\s*[:：]\s*.+"
+)
+_HEADER_SECTION_RE = re.compile(
+    r"(?:^|\n)(?:#{1,4}\s+|【(?:分析|数据|统计|报告|汇总|排查|总结)[^】]*】)"
+)
+
+
+def is_structured_analysis(text: str) -> bool:
+    """判断是否为数据密集型或结构化多点分析回复。
+    
+    规则：
+    1. 包含 3 项及以上有效列表项（1. 2. 3. 或 - 条目等）；
+    2. 或包含 3 行及以上指标键值对（指标名: 数值）；
+    3. 或包含结构化分析/数据小标题，且伴随至少 2 项列表/指标。
+    """
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    if len(lines) < 3:
+        return False
+
+    list_items = 0
+    kv_items = 0
+    for line in lines:
+        if _LIST_ITEM_RE.match(line):
+            if len(line) >= 4:
+                list_items += 1
+        elif _KEY_VALUE_RE.match(line):
+            kv_items += 1
+
+    if list_items >= 3 or kv_items >= 3:
+        return True
+
+    if _HEADER_SECTION_RE.search(text) and (list_items >= 2 or kv_items >= 2):
+        return True
+
+    return False
+

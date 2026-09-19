@@ -107,6 +107,7 @@ class ReplyOptions:
     protect_code_block: bool = True
     protect_table: bool = True
     protect_math: bool = True
+    protect_structured_data: bool = True
     strip_markdown_marks: bool = True
     debug_log: bool = False
     verify_enabled: bool = False
@@ -167,6 +168,7 @@ class ReplyOptions:
             protect_code_block=_as_bool(data.get("protect_code_block"), True),
             protect_table=_as_bool(data.get("protect_table"), True),
             protect_math=_as_bool(data.get("protect_math"), True),
+            protect_structured_data=_as_bool(data.get("protect_structured_data"), True),
             strip_markdown_marks=_as_bool(data.get("strip_markdown_marks"), True),
             debug_log=_as_bool(data.get("debug_log"), False),
             verify_enabled=_as_bool(data.get("verify_enabled"), False),

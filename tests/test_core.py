@@ -110,6 +110,21 @@ class PolicyTest(unittest.TestCase):
         self.assertFalse(is_markdown_table("| a | b |"))
         self.assertFalse(is_markdown_table("普通文本 | 带管道"))
 
+    def test_structured_analysis_bypass(self):
+        text_list = (
+            "本月数据表现分析如下：\n"
+            "1. 整体可用率维持在 99.98% 以上\n"
+            "2. 平均延迟降低 15ms，吞吐提升 30%\n"
+            "3. 慢查询总量较上月缩减 80%"
+        )
+        decision = decide(text_list, opts(min_total_chars=10))
+        self.assertEqual(decision.mode, MODE_BYPASS)
+        self.assertEqual(decision.reason, "structured_data")
+
+        # 关掉开关后正常走 split
+        decision_off = decide(text_list, opts(min_total_chars=10, protect_structured_data=False))
+        self.assertEqual(decision_off.mode, MODE_SPLIT)
+
 
 class SegmentTest(unittest.TestCase):
     def test_simple_split(self):

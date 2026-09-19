@@ -23,7 +23,7 @@ try:
     )
     from .savagereply.marker import build_marker_prompt, parse_marker
     from .savagereply.pacing import read_delay, segment_delay
-    from .savagereply.policy import MODE_SPLIT, decide
+    from .savagereply.policy import MODE_BYPASS, MODE_SPLIT, decide
     from .savagereply.segment import segments_from_marked, split_text, strip_emphasis
     from .savagereply.typing_status import (
         STOP_EVENT_TYPE,
@@ -52,7 +52,7 @@ except ImportError:
     )
     from savagereply.marker import build_marker_prompt, parse_marker
     from savagereply.pacing import read_delay, segment_delay
-    from savagereply.policy import MODE_SPLIT, decide
+    from savagereply.policy import MODE_BYPASS, MODE_SPLIT, decide
     from savagereply.segment import segments_from_marked, split_text, strip_emphasis
     from savagereply.typing_status import (
         STOP_EVENT_TYPE,
@@ -83,6 +83,7 @@ BOOL_CONFIG_KEYS = (
     "protect_code_block",
     "protect_table",
     "protect_math",
+    "protect_structured_data",
     "strip_markdown_marks",
     "verify_enabled",
     "verify_log_only",
@@ -193,6 +194,7 @@ class SavageReplyPlugin(Star):
             "protect_code_block": options.protect_code_block,
             "protect_table": options.protect_table,
             "protect_math": options.protect_math,
+            "protect_structured_data": options.protect_structured_data,
             "strip_markdown_marks": options.strip_markdown_marks,
             "verify_enabled": options.verify_enabled,
             "verify_log_only": options.verify_log_only,
@@ -624,24 +626,37 @@ class SavageReplyPlugin(Star):
 
         marked: list[str] | None = None
         # 始终解析：即使功能关闭，也要剥掉模型可能自己输出的标记，避免泄漏给用户。
-        text, marked = parse_marker(text)
+        clean_text, marked = parse_marker(text)
         if marked and not options.marker_enabled:
             marked = None
 
+        decision = decide(clean_text, options)
+        # 1. 最高优先级完整性保护：代码块、表格、数学公式、结构化数据分析清单等，严格整条完整发送，绝不下刀
+        if decision.mode == MODE_BYPASS and decision.reason in {
+            "code_block",
+            "table",
+            "math",
+            "structured_data",
+        }:
+            result.chain = [*head_comps, Plain(clean_text), *tail_comps]
+            if options.debug_log:
+                logger.info("Savage's Reply bypass (integrity): %s", decision.reason)
+            return
+
+        # 2. 模型语义标记分段（若模型显式断句且不在结构完整性保护内）
         if marked:
             segments = segments_from_marked(marked, options)
         else:
-            decision = decide(text, options)
             if decision.mode != MODE_SPLIT:
-                # text 已是剥掉标记后的干净文本：bypass 也要写回，否则标记泄漏给用户。
-                result.chain = [*head_comps, Plain(text), *tail_comps]
+                # clean_text 已是剥掉标记后的干净文本：bypass 也要写回，否则标记泄漏给用户。
+                result.chain = [*head_comps, Plain(clean_text), *tail_comps]
                 if options.debug_log:
                     logger.info("Savage's Reply bypass: %s", decision.reason)
                 return
-            segments = split_text(text, options)
+            segments = split_text(clean_text, options)
 
         if len(segments) <= 1:
-            result.chain = [*head_comps, Plain(text), *tail_comps]
+            result.chain = [*head_comps, Plain(clean_text), *tail_comps]
             if options.debug_log:
                 logger.info("Savage's Reply bypass: single_segment")
             return

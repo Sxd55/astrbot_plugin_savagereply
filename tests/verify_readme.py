@@ -40,6 +40,7 @@ LABEL = {
     "marker_prompt": "边界标记规范文本", "protect_code_block": "保护代码块",
     "force_non_streaming": "本会话关闭流式输出",
     "protect_table": "保护代码块", "protect_math": "保护代码块",
+    "protect_structured_data": "保护数据与分析列表",
     "debug_log": "调试日志", "verify_enabled": "风险扫描",
     "verify_log_only": "风险扫描仅记录", "verify_suffix_text": "不确定提示后缀",
     "verify_absolute_words": "可疑承诺词表",
