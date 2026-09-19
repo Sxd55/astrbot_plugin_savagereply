@@ -122,21 +122,45 @@ def clean_markdown_for_rendering(text: str) -> str:
 
     import re
 
-    # 0. 次级列表智能缩进对齐：当检测到紧随编号项（1. 2. 3.）之后的次级项（- 或 •）未缩进时，
-    # 自动补全 4 个空格缩进，使其在 CommonMark 中正确解析为优雅嵌套列表（带自然层级距离）
+    # 0. 智能层级规范化与导引词加粗：
+    # 0.1 次级列表智能缩进对齐：编号项后面的 - 或 • 自动缩进 4 格
+    # 0.2 列表导引词自动加粗：当列表项（如 - 闲聊直接回：）冒号前的短语未加粗时，自动赋予 **加粗**，100% 呈现 Antigravity 黑白对比架构感
     lines = text.split("\n")
     sublist_processed = []
     in_num_item = False
     for line in lines:
         stripped = line.strip()
+        # 匹配一级编号小项：如 "1. 意图判定："
+        num_m = re.match(r"^(\d+\.\s+)(?!\*\*)([^\n:*`]{2,14})([:：])(.*)$", stripped)
+        if num_m:
+            in_num_item = True
+            pfx, term, col, rest = num_m.groups()
+            sublist_processed.append(f"{pfx}**{term.strip()}**{col}{rest}")
+            continue
         if re.match(r"^\d+\.\s+", stripped):
             in_num_item = True
             sublist_processed.append(line)
             continue
+
+        # 次级列表项处理
         if in_num_item and re.match(r"^[•\-\*]\s+", stripped):
             content = re.sub(r"^[•\-\*]\s*", "- ", stripped)
+            # 自动加粗未加粗的导引词（如 "- 闲聊直接回：" -> "    - **闲聊直接回**："）
+            sub_m = re.match(r"^(- \s*)(?!\*\*)([^\n:*`]{2,14})([:：])(.*)$", content)
+            if sub_m:
+                spfx, sterm, scol, srest = sub_m.groups()
+                content = f"{spfx}**{sterm.strip()}**{scol}{srest}"
             sublist_processed.append("    " + content)
             continue
+        elif re.match(r"^[•\-\*]\s+", stripped):
+            content = re.sub(r"^[•\-\*]\s*", "- ", stripped)
+            sub_m = re.match(r"^(- \s*)(?!\*\*)([^\n:*`]{2,14})([:：])(.*)$", content)
+            if sub_m:
+                spfx, sterm, scol, srest = sub_m.groups()
+                content = f"{spfx}**{sterm.strip()}**{scol}{srest}"
+            sublist_processed.append(content)
+            continue
+
         if not stripped or stripped.startswith("#"):
             in_num_item = False
         sublist_processed.append(line)
@@ -218,7 +242,6 @@ def clean_markdown_for_rendering(text: str) -> str:
     # 4. 还原占位保护结构
     for i, orig in enumerate(placeholders):
         protected = protected.replace(f"@@PROTECTED_{i}@@", orig)
-
     # 5. 规范化 Markdown 加粗标记，彻底修复 LLM 常见的星号粘连、空格错位与标点边界冲突
     # 5.1 连续 4 个以上星号拆开为 ** **
     protected = re.sub(r"\*{4,}", "** **", protected)
@@ -229,9 +252,6 @@ def clean_markdown_for_rendering(text: str) -> str:
     protected = re.sub(r"\*\*\s+([^\*\n]+?)\s+\*\*", r"**\1**", protected)
     protected = re.sub(r"\*\*\s+([^\*\n]+?)\*\*", r"**\1**", protected)
     protected = re.sub(r"\*\*([^\*\n]+?)\s+\*\*", r"**\1**", protected)
-    # 5.4 修复加粗结束后紧跟英文字母但没有空格导致的 CommonMark 右定界符失效：**text**word -> **text** word
-    protected = re.sub(r"(\*\*[^\*\n]+?\*\*)([a-zA-Z0-9])", r"\1 \2", protected)
-    protected = re.sub(r"([a-zA-Z0-9])(\*\*[^\*\n]+?\*\*)", r"\1 \2", protected)
 
     # 6. 折叠超过 3 行以上的连续空行，保持排版呼吸感
     cleaned = re.sub(r"\n{3,}", "\n\n", protected.strip())
@@ -329,9 +349,10 @@ def markdown_to_antigravity_html(text: str) -> str:
     background-color: var(--bg-page);
     padding: 24px 28px;
     width: 800px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", 'AntigravitySans', "Noto Sans SC", sans-serif;
-    font-size: 14px;
-    line-height: 1.62;
+    font-family: 'AntigravitySans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 14.2px;
+    font-weight: 450;
+    line-height: 1.68;
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -346,8 +367,8 @@ def markdown_to_antigravity_html(text: str) -> str:
     word-break: break-word;
   }}
   h1, h2, h3, h4, h5, h6 {{
-    color: #1f2328;
-    font-weight: 600;
+    color: #111827;
+    font-weight: 700;
     line-height: 1.4;
     margin-top: 18px;
     margin-bottom: 8px;
@@ -358,7 +379,7 @@ def markdown_to_antigravity_html(text: str) -> str:
   h1 {{ font-size: 19px; }}
   h2 {{ font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }}
   h3 {{ font-size: 15.5px; }}
-  h4 {{ font-size: 14px; color: #1e293b; }}
+  h4 {{ font-size: 14.2px; color: #1e293b; }}
   p {{
     margin-bottom: 10px;
   }}
@@ -366,8 +387,8 @@ def markdown_to_antigravity_html(text: str) -> str:
     margin-bottom: 0;
   }}
   strong, b {{
-    font-weight: 600;
-    color: #1f2328;
+    font-weight: 700;
+    color: #111827;
   }}
   em, i {{
     font-style: italic;
