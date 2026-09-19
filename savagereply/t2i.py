@@ -283,15 +283,13 @@ def markdown_to_antigravity_html(text: str) -> str:
 <style>
 {builtin_font_css}
   :root {{
-    --bg-page: #f0f2f5;
-    --bg-card: #ffffff;
-    --text-primary: #111827;
-    --text-secondary: #4b5563;
+    --bg-page: #f9f9f9;
+    --text-primary: #101010;
+    --text-secondary: #374151;
     --text-muted: #6b7280;
     --border: #e5e7eb;
-    --border-card: #e2e8f0;
     --code-color: #a31515;
-    --code-bg: #f3f4f6;
+    --code-bg: #f3f3f3;
     --table-head: #f8fafc;
   }}
   * {{
@@ -301,38 +299,38 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   body {{
     background-color: var(--bg-page);
-    padding: 24px;
-    width: 820px;
+    padding: 24px 28px;
+    width: 800px;
     font-family: 'AntigravitySans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
-    font-size: 15px;
-    line-height: 1.72;
+    font-size: 14.5px;
+    line-height: 1.66;
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }}
   .antigravity-bubble {{
-    background-color: var(--bg-card);
-    border: 1px solid var(--border-card);
-    border-radius: 12px;
-    padding: 28px 32px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
     word-break: break-word;
   }}
   h1, h2, h3, h4, h5, h6 {{
-    color: #0f172a;
-    font-weight: 600;
-    line-height: 1.4;
-    margin-top: 22px;
+    color: #101010;
+    font-weight: 700;
+    line-height: 1.38;
+    margin-top: 20px;
     margin-bottom: 10px;
   }}
   h1:first-child, h2:first-child, h3:first-child, h4:first-child {{
     margin-top: 0;
   }}
-  h1 {{ font-size: 20px; }}
-  h2 {{ font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }}
-  h3 {{ font-size: 16.5px; }}
-  h4 {{ font-size: 15px; color: #334155; }}
+  h1 {{ font-size: 19.5px; }}
+  h2 {{ font-size: 17.5px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }}
+  h3 {{ font-size: 16px; }}
+  h4 {{ font-size: 14.5px; color: #1e293b; }}
   p {{
     margin-bottom: 12px;
   }}
@@ -340,46 +338,46 @@ def markdown_to_antigravity_html(text: str) -> str:
     margin-bottom: 0;
   }}
   strong, b {{
-    font-weight: 600;
-    color: #0f172a;
+    font-weight: 700;
+    color: #101010;
   }}
   em, i {{
     font-style: italic;
     color: #475569;
   }}
-  /* 1:1 Antigravity 原汁原味克制高亮 */
+  /* 1:1 像素级精准 Antigravity 标红高亮 */
   code {{
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 0.88em;
     color: var(--code-color);
     background-color: var(--code-bg);
-    border-radius: 4px;
-    padding: 2px 6px;
+    border-radius: 3px;
+    padding: 1.5px 5px;
     margin: 0 2px;
     white-space: pre-wrap;
     word-break: break-word;
     vertical-align: baseline;
   }}
-  /* 1:1 Antigravity 引用框 */
+  /* 1:1 Antigravity 优雅微灰引用框 */
   blockquote {{
-    border-left: 3.5px solid #cbd5e1;
-    background-color: #f8fafc;
+    border-left: 3px solid #cbd5e1;
+    background-color: #f3f3f3;
     padding: 10px 16px;
-    margin: 14px 0;
-    border-radius: 0 6px 6px 0;
-    color: #475569;
+    margin: 12px 0;
+    border-radius: 4px;
+    color: #374151;
     font-size: 14px;
-    line-height: 1.65;
+    line-height: 1.62;
   }}
   blockquote p {{
     margin: 4px 0;
   }}
   blockquote p:first-child {{ margin-top: 0; }}
   blockquote p:last-child {{ margin-bottom: 0; }}
-  /* 列表排版：统一优雅圆点与舒适间距 */
+  /* 列表排版：统一饱满实心圆点与紧凑间距 */
   ul, ol {{
-    padding-left: 22px;
-    margin: 8px 0 14px 0;
+    padding-left: 20px;
+    margin: 8px 0 12px 0;
   }}
   ul {{
     list-style-type: disc;
@@ -389,19 +387,22 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   li {{
     margin-bottom: 5px;
-    line-height: 1.7;
+    line-height: 1.66;
     color: var(--text-primary);
+  }}
+  li::marker {{
+    color: #101010;
   }}
   li:last-child {{
     margin-bottom: 0;
   }}
   li > ul, li > ol {{
     margin: 4px 0 6px 0;
-    padding-left: 20px;
+    padding-left: 18px;
   }}
   /* 表格 */
   .md-table-host {{
-    margin: 16px 0;
+    margin: 14px 0;
     position: relative;
   }}
   .md-table-scroll {{
@@ -411,7 +412,7 @@ def markdown_to_antigravity_html(text: str) -> str:
   .md-table-wrapper {{
     position: relative;
     width: 100%;
-    border-radius: 8px;
+    border-radius: 6px;
     overflow: hidden;
     border: 1px solid var(--border);
   }}
@@ -424,12 +425,12 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   .md-table-wrapper th {{
     background-color: var(--table-head);
-    padding: 9px 14px;
+    padding: 8px 12px;
     text-align: left;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1.4;
     border: 1px solid var(--border);
-    color: #1e293b;
+    color: #101010;
   }}
   .md-table-wrapper td {{
     padding: 9px 14px;
@@ -527,7 +528,7 @@ def render_markdown_to_image_sync(
             "--font-render-hinting=medium",
             "--enable-font-antialiasing",
             "--force-device-scale-factor=2",
-            f"--window-size=820,{est_height}",
+            f"--window-size=800,{est_height}",
             f"--screenshot={tmp_shot}",
             Path(tmp_html_path).resolve().as_uri(),
         ]
