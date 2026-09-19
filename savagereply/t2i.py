@@ -1,11 +1,12 @@
 """详细输出转高质感卡片长图 (T2I: Text-to-Image)。
 
 100% 像素级复刻 Antigravity 沉浸式原生排版规范：
-- 浅灰蓝页面底板 (#f0f2f5)，纯白圆角卡片容器 + 左侧灰蓝竖线 + 微阴影
-- 现代字体栈，正文深黑 (#111827)，行高舒适，字重对比鲜明 (700 加厚)
-- 行内代码/关键参数原汁原味代码高亮：浅灰微温底色 (#efefef) + VS Code 经典深暗红高亮 (#a31515)，无突兀边框
-- 引用块：纯浅灰平底圆角框 (#f3f3f3)，左侧灰竖线，内衬透气舒适
-- 斑马纹现代数据表格与深色代码块
+- 极简纯净纯色页面 (#ffffff)，无多余外部浮动框与阴影，自然利落
+- 现代字体栈，优先 Segoe UI / 微软雅黑 (Windows) 与苹方 (macOS)，思源黑体作为纯服务器无缝兜底
+- 正文深灰黑 (#1f2328)，行高 1.62，黑色加粗 (#1f2328, 600) 为核心视觉锚点
+- 行内代码极度克制：浅灰微温底色 (#f6f8fa) + VS Code 经典深暗红高亮 (#a31515)，无突兀边框
+- 次级列表深度缩进 (22px)，阶梯式呈现清晰架构
+- 引用块：纯浅灰平底圆角框 (#f8fafc)，左侧浅灰蓝竖线，内衬透气舒适
 - 高清 2x Retina 采样与自适应无损纵向裁切
 
 系统依赖：
@@ -121,6 +122,26 @@ def clean_markdown_for_rendering(text: str) -> str:
 
     import re
 
+    # 0. 次级列表智能缩进对齐：当检测到紧随编号项（1. 2. 3.）之后的次级项（- 或 •）未缩进时，
+    # 自动补全 4 个空格缩进，使其在 CommonMark 中正确解析为优雅嵌套列表（带自然层级距离）
+    lines = text.split("\n")
+    sublist_processed = []
+    in_num_item = False
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r"^\d+\.\s+", stripped):
+            in_num_item = True
+            sublist_processed.append(line)
+            continue
+        if in_num_item and re.match(r"^[•\-\*]\s+", stripped):
+            content = re.sub(r"^[•\-\*]\s*", "- ", stripped)
+            sublist_processed.append("    " + content)
+            continue
+        if not stripped or stripped.startswith("#"):
+            in_num_item = False
+        sublist_processed.append(line)
+    text = "\n".join(sublist_processed)
+
     # 1. 占位保护已有语法结构（围栏代码块必须最先保护）
     placeholders = []
 
@@ -169,9 +190,9 @@ def clean_markdown_for_rendering(text: str) -> str:
     # 保护 HTML 标签
     protected = re.sub(r"<[^>]+>", save_placeholder, protected)
 
-    # 3. 智能安全高亮匹配
+    # 5. 精准克制的高亮匹配（对齐 Antigravity 原生风格，严禁泛滥）
 
-    # 3.1 引用块内的提示/举例前缀美化（> 提示： -> > **提示**：）
+    # 5.1 引用块内的提示/举例前缀美化（> 提示： -> > **提示**：）
     protected = re.sub(
         r"(^> *(?:提示|举例|注意|说明|技巧|警告|参考)[:：])",
         lambda m: f"> **{m.group(1).lstrip('> *').rstrip(':：')}**：",
@@ -179,46 +200,16 @@ def clean_markdown_for_rendering(text: str) -> str:
         flags=re.MULTILINE,
     )
 
-    # 3.2 英文参数词串 / 提示词列表 (如 'crowded, extra limbs, distorted face, messy layout')
-    # 匹配逗号分隔的 2 个以上连续英文词汇短语
-    protected = re.sub(
-        r"(?<![a-zA-Z0-9`])([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)?(?:,\s*[a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)?){2,})(?![a-zA-Z0-9`])",
-        r"`\1`",
-        protected,
-    )
-
-    # 3.3 命令行参数与选项 (--ar 16:9, --seed 12345, --v 6) 首字符必须是字母，杜绝匹配纯横线
+    # 5.2 命令行参数与选项 (--seed 12345, --ar 16:9, -v) 首字符必须是字母
     protected = re.sub(
         r"(?<![a-zA-Z0-9`])(--[a-zA-Z][a-zA-Z0-9_-]*(?:\s+[a-zA-Z0-9_.:/-]+)?)(?![a-zA-Z0-9`])",
         r"`\1`",
         protected,
     )
 
-    # 3.4 常见 AI、生图与技术核心参数名 (seed, negative, prompt, lora, checkpoint, steps, cfg 等)
-    tech_keywords = [
-        "seed", "negative", "prompt", "prompts", "lora", "checkpoint",
-        "steps", "cfg", "sampler", "workflow", "clip_skip", "denoise", "vae",
-        "controlnet", "comfyui", "midjourney", "sdxl", "flux",
-    ]
-    for kw in tech_keywords:
-        protected = re.sub(
-            rf"(?<![a-zA-Z0-9`_])({re.escape(kw)})(?![a-zA-Z0-9`_])",
-            r"`\1`",
-            protected,
-            flags=re.IGNORECASE,
-        )
-
-    # 3.5 分辨率与规格参数 (720p, 1080p, 2k, 4k, 60fps)
+    # 5.3 常见脚本与配置文件名 (tests/test_t2i.py, config.json, main.py 等)
     protected = re.sub(
-        r"(?<![a-zA-Z0-9`])(\d{3,4}p|[248]k|\d{2,3}fps)(?![a-zA-Z0-9`])",
-        r"`\1`",
-        protected,
-        flags=re.IGNORECASE,
-    )
-
-    # 3.6 常见脚本与配置文件名 (policy.py, config.json, docker-compose.yml 等)
-    protected = re.sub(
-        r"(?<![a-zA-Z0-9`])([a-zA-Z0-9_-]+\.(?:py|json|yaml|yml|js|ts|sh|bat|md|css|html))(?![a-zA-Z0-9`])",
+        r"(?<![a-zA-Z0-9`/])([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+\.(?:py|json|yaml|yml|js|ts|sh|bat|md|css|html))(?![a-zA-Z0-9`])",
         r"`\1`",
         protected,
         flags=re.IGNORECASE,
@@ -271,14 +262,15 @@ def _get_builtin_font_face_css() -> str:
 
 
 def markdown_to_antigravity_html(text: str) -> str:
-    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式卡片 HTML。
+    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式纯色卡片 HTML。
 
     严格采纳 Antigravity 宿主原生排版与色彩系统：
-    - 页面底板：--bg-page (#f0f2f5) 柔和浅灰蓝
-    - 消息主体：纯白圆角卡片 (#ffffff)，10px 圆角 + 左侧 3.5px 灰蓝竖线 + 微阴影
-    - 正文字体栈：优先内置思源黑体，完美覆盖 Windows / macOS / Linux
-    - 行内代码：克制典雅的暗红高亮 (--code-color: #a31515, 底色 #f3f4f6, 3px 圆角)
-    - 引用块：经典灰竖条 (3px solid #cbd5e1) + 浅灰卡片平底
+    - 页面底板：纯白 (#ffffff)，无多余外部浮动框与阴影，自然利落
+    - 正文字体栈：Windows 优先微软雅黑与 Segoe UI，macOS 优先苹方，内置思源黑体兜底
+    - 黑色加粗：作为视觉核心锚点 (#1f2328, 600 字重)
+    - 行内代码：极度克制深暗红高亮 (--code-color: #a31515, 底色 #f6f8fa, 3px 圆角)
+    - 次级列表：深度缩进 (22px)，完美呈现阶梯层级排版
+    - 引用块：经典灰竖条 (3px solid #cbd5e1) + 极浅平底
     - 表格：md-table-wrapper 圆角卡片，消除边框重叠，表头 #f8fafc 浅底
     """
     cleaned_text = clean_markdown_for_rendering(text)
@@ -319,13 +311,13 @@ def markdown_to_antigravity_html(text: str) -> str:
 <style>
 {builtin_font_css}
   :root {{
-    --bg-page: #f0f2f5;
-    --text-primary: #101010;
-    --text-secondary: #374151;
+    --bg-page: #ffffff;
+    --text-primary: #1f2328;
+    --text-secondary: #475569;
     --text-muted: #6b7280;
-    --border: #e5e7eb;
+    --border: #e1e4e8;
     --code-color: #a31515;
-    --code-bg: #f3f3f3;
+    --code-bg: #f6f8fa;
     --table-head: #f8fafc;
   }}
   * {{
@@ -335,48 +327,47 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   body {{
     background-color: var(--bg-page);
-    padding: 16px;
+    padding: 24px 28px;
     width: 800px;
-    font-family: 'AntigravitySans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
-    font-size: 14.5px;
-    line-height: 1.66;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", 'AntigravitySans', "Noto Sans SC", sans-serif;
+    font-size: 14px;
+    line-height: 1.62;
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }}
   .antigravity-bubble {{
-    background-color: #ffffff;
-    border: 1px solid #e8eaed;
-    border-left: 3.5px solid #94a3b8;
-    border-radius: 10px;
-    padding: 24px 26px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.03);
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
     word-break: break-word;
   }}
   h1, h2, h3, h4, h5, h6 {{
-    color: #101010;
-    font-weight: 700;
-    line-height: 1.38;
-    margin-top: 20px;
-    margin-bottom: 10px;
+    color: #1f2328;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-top: 18px;
+    margin-bottom: 8px;
   }}
   h1:first-child, h2:first-child, h3:first-child, h4:first-child {{
     margin-top: 0;
   }}
-  h1 {{ font-size: 19.5px; }}
-  h2 {{ font-size: 17.5px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }}
-  h3 {{ font-size: 16px; }}
-  h4 {{ font-size: 14.5px; color: #1e293b; }}
+  h1 {{ font-size: 19px; }}
+  h2 {{ font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }}
+  h3 {{ font-size: 15.5px; }}
+  h4 {{ font-size: 14px; color: #1e293b; }}
   p {{
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }}
   p:last-child {{
     margin-bottom: 0;
   }}
   strong, b {{
-    font-weight: 700;
-    color: #101010;
+    font-weight: 600;
+    color: #1f2328;
   }}
   em, i {{
     font-style: italic;
@@ -398,12 +389,12 @@ def markdown_to_antigravity_html(text: str) -> str:
   /* 1:1 Antigravity 优雅微灰引用框 */
   blockquote {{
     border-left: 3px solid #cbd5e1;
-    background-color: #f3f3f3;
+    background-color: #f8fafc;
     padding: 10px 16px;
     margin: 12px 0;
     border-radius: 4px;
     color: #374151;
-    font-size: 14px;
+    font-size: 13.8px;
     line-height: 1.62;
   }}
   blockquote p {{
@@ -411,10 +402,10 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   blockquote p:first-child {{ margin-top: 0; }}
   blockquote p:last-child {{ margin-bottom: 0; }}
-  /* 列表排版：统一饱满实心圆点与紧凑间距 */
+  /* 列表排版：对齐图2/图3的次级列表明显缩进与圆点呼吸感 */
   ul, ol {{
-    padding-left: 20px;
-    margin: 8px 0 12px 0;
+    padding-left: 24px;
+    margin: 6px 0 10px 0;
   }}
   ul {{
     list-style-type: disc;
@@ -424,18 +415,22 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   li {{
     margin-bottom: 5px;
-    line-height: 1.66;
+    line-height: 1.62;
     color: var(--text-primary);
   }}
   li::marker {{
-    color: #101010;
+    color: #374151;
   }}
   li:last-child {{
     margin-bottom: 0;
   }}
+  /* 嵌套次级列表：深度缩进呈现层级阶梯感（1:1 复刻图3） */
   li > ul, li > ol {{
     margin: 4px 0 6px 0;
-    padding-left: 18px;
+    padding-left: 22px;
+  }}
+  li > p {{
+    margin-bottom: 4px;
   }}
   /* 表格 */
   .md-table-host {{
@@ -607,7 +602,7 @@ def render_markdown_to_image_sync(
             diff = ImageChops.difference(im, bg)
             bbox = diff.getbbox()
             if bbox:
-                pad_v = 20 * 2  # 2x Retina 采样下底部保留 20px 对称外边距
+                pad_v = 24 * 2  # 2x Retina 采样下底部保留 24px 对称内边距（与顶部 24px 严格对称）
                 bottom = min(im.height, bbox[3] + pad_v)
                 cropped = im.crop((0, 0, im.width, bottom))
                 cropped.save(output_path, "PNG")
