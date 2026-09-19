@@ -124,18 +124,42 @@ def clean_markdown_for_rendering(text: str) -> str:
     return cleaned
 
 
+def _get_builtin_font_face_css() -> str:
+    """自动检测插件目录内置字体（如思源黑体 Noto Sans SC），生成 @font-face CSS。"""
+    try:
+        font_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+        if not font_dir.exists():
+            return ""
+        for ext, fmt in [(".woff2", "woff2"), (".ttf", "truetype"), (".otf", "opentype")]:
+            for font_file in font_dir.glob(f"*{ext}"):
+                uri = font_file.resolve().as_uri()
+                return f"""
+@font-face {{
+  font-family: 'AntigravitySans';
+  src: url('{uri}') format('{fmt}');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}}
+"""
+    except Exception:
+        pass
+    return ""
+
+
 def markdown_to_antigravity_html(text: str) -> str:
     """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式气泡卡片 HTML。
 
     严格采纳 Antigravity 宿主原生排版与色彩系统：
     - 页面底板：--bg-page (#f0f2f5) 柔和微灰
     - 消息主体气泡：--bg-card (#ffffff) 纯白卡片，带 12px 圆角与柔和微阴影
-    - 正文字体栈：优先系统现代黑体，完美覆盖 Windows / macOS / Linux (微米黑与思源黑体)
+    - 正文字体栈：优先内置思源黑体，完美覆盖 Windows / macOS / Linux (微米黑与思源黑体)
     - 行内代码：克制典雅的暗红高亮 (--code-color: #a31515, 底色 #f3f4f6, 4px 圆角)
     - 引用块：经典灰竖条 (3.5px solid #cbd5e1) + 浅灰卡片平底
     - 表格：md-table-wrapper 圆角卡片，消除边框重叠，表头 #f8fafc 浅底
     """
     cleaned_text = clean_markdown_for_rendering(text)
+    builtin_font_css = _get_builtin_font_face_css()
 
     try:
         from markdown_it import MarkdownIt
@@ -143,10 +167,18 @@ def markdown_to_antigravity_html(text: str) -> str:
         md = MarkdownIt("commonmark").enable("table").enable("strikethrough")
         content_html = md.render(cleaned_text)
     except Exception:
-        import html
+        try:
+            import markdown
 
-        escaped = html.escape(cleaned_text).replace("\n", "<br>")
-        content_html = f"<p>{escaped}</p>"
+            content_html = markdown.markdown(
+                cleaned_text,
+                extensions=["tables", "fenced_code", "nl2br", "sane_lists"],
+            )
+        except Exception:
+            import html
+
+            escaped = html.escape(cleaned_text).replace("\n", "<br>")
+            content_html = f"<p>{escaped}</p>"
 
     # 1:1 原生 Antigravity 表格结构：自动包裹外层容器，实现圆角无溢出裁切与边框重叠消除
     import re
@@ -162,6 +194,7 @@ def markdown_to_antigravity_html(text: str) -> str:
 <head>
 <meta charset="utf-8">
 <style>
+{builtin_font_css}
   :root {{
     --bg-page: #f0f2f5;
     --bg-card: #ffffff;
@@ -183,7 +216,7 @@ def markdown_to_antigravity_html(text: str) -> str:
     background-color: var(--bg-page);
     padding: 24px;
     width: 820px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
+    font-family: 'AntigravitySans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
     font-size: 15px;
     line-height: 1.72;
     color: var(--text-primary);
@@ -403,6 +436,7 @@ def render_markdown_to_image_sync(
             "--no-sandbox",
             "--disable-dev-shm-usage",
             "--hide-scrollbars",
+            "--allow-file-access-from-files",
             "--font-render-hinting=medium",
             "--enable-font-antialiasing",
             "--force-device-scale-factor=2",
