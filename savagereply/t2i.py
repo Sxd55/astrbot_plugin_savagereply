@@ -75,7 +75,24 @@ def find_browser_executable() -> str | None:
             _CACHED_BROWSER_PATH = w
             return _CACHED_BROWSER_PATH
 
-    # 4. macOS 常见位置
+    # 4. Linux 常见二进制路径
+    linux_candidates = [
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/microsoft-edge",
+        "/usr/bin/microsoft-edge-stable",
+        "/snap/bin/chromium",
+        "/usr/local/bin/chromium",
+        "/usr/local/bin/chrome",
+    ]
+    for candidate in linux_candidates:
+        if os.path.isfile(candidate):
+            _CACHED_BROWSER_PATH = candidate
+            return _CACHED_BROWSER_PATH
+
+    # 5. macOS 常见位置
     mac_candidates = [
         "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -296,10 +313,12 @@ def render_markdown_to_image_sync(
             "--headless=new",
             "--disable-gpu",
             "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--hide-scrollbars",
             "--force-device-scale-factor=2",
             "--window-size=820,1500",
             f"--screenshot={tmp_shot}",
-            f"file:///{Path(tmp_html_path).as_posix()}",
+            Path(tmp_html_path).resolve().as_uri(),
         ]
         res = subprocess.run(
             cmd,
@@ -350,26 +369,38 @@ async def render_markdown_to_image(
     )
 
 
+_WARNED_NO_BROWSER: bool = False
+
+
 def should_render_as_image(
     text: str,
     options: ReplyOptions,
     decision_reason: str = "",
 ) -> bool:
     """判断当前回复是否属于详细输出，应当走图片长图回复。"""
+    global _WARNED_NO_BROWSER
     if not getattr(options, "t2i_detailed_reply_enabled", True):
         return False
 
-    # 必须系统存在可用浏览器
-    if not find_browser_executable():
+    is_detailed = (decision_reason in {"structured_data", "table"}) or (
+        len(text.strip()) >= getattr(options, "t2i_min_chars", 200)
+    )
+    if not is_detailed:
         return False
 
-    # 1. 明确的表格或结构化多点数据分析
-    if decision_reason in {"structured_data", "table"}:
-        return True
+    # 必须系统存在可用浏览器
+    browser = find_browser_executable()
+    if not browser:
+        if not _WARNED_NO_BROWSER:
+            _WARNED_NO_BROWSER = True
+            try:
+                from astrbot.api import logger
+                logger.info(
+                    "Savage's Reply: 触发详细回复/表格转长图，但当前系统尚未安装 Chromium 浏览器，已降级为纯文本回复。"
+                    "Linux 服务器执行 'apt install -y chromium-browser fonts-wqy-microhei' 即可开启 1:1 Antigravity 卡片长图。"
+                )
+            except Exception:
+                pass
+        return False
 
-    # 2. 回复长度达到配置的门槛（默认 200 字）
-    min_chars = getattr(options, "t2i_min_chars", 200)
-    if len(text.strip()) >= min_chars:
-        return True
-
-    return False
+    return True

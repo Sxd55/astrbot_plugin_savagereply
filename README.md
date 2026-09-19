@@ -30,6 +30,26 @@
 
 **建议**：如果开启了本插件，请把 AstrBot 设置 → 拓展功能里的内置「分段回复」关掉，避免双重分段（插件会日志提示）。
 
+### 💡 Linux / 云服务器启用 Antigravity 卡片长图指引
+详细长回复转高清卡片长图依赖系统 Chromium 引擎。若未检测到浏览器，插件会**自动安全降级为发送纯文本**，不丢消息。
+如果您的 AstrBot 部署在 Linux 云服务器（如腾讯云/阿里云/宝塔/Docker），只需在终端执行一条安装命令即可立即享受 1:1 原生 Antigravity 卡片长图：
+
+- **Ubuntu / Debian**:
+  ```bash
+  sudo apt-get update && sudo apt-get install -y chromium-browser fonts-wqy-microhei
+  # 若提示找不到 chromium-browser，安装 chromium 即可：
+  # sudo apt-get install -y chromium fonts-wqy-microhei
+  ```
+- **CentOS / RHEL / TencentOS / Alibaba Cloud Linux**:
+  ```bash
+  sudo yum install -y epel-release && sudo yum install -y chromium wqy-microhei-fonts
+  ```
+- **Docker 容器 (Alpine)**:
+  ```bash
+  apk add --no-cache chromium font-noto-cjk
+  ```
+安装后无需修改插件任何配置，自动热感知并直接生效！
+
 ---
 
 ## 三、插件页面（输出画廊）
