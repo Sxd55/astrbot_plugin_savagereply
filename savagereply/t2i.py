@@ -1,10 +1,10 @@
 """详细输出转高质感卡片长图 (T2I: Text-to-Image)。
 
 100% 像素级复刻 Antigravity 沉浸式原生排版规范：
-- 沉浸式微暖浅灰背景 (#f9f9f9)，无多余外部浮动框与阴影，自然利落
+- 浅灰蓝页面底板 (#f0f2f5)，纯白圆角卡片容器 + 左侧灰蓝竖线 + 微阴影
 - 现代字体栈，正文深黑 (#111827)，行高舒适，字重对比鲜明 (700 加厚)
 - 行内代码/关键参数原汁原味代码高亮：浅灰微温底色 (#efefef) + VS Code 经典深暗红高亮 (#a31515)，无突兀边框
-- 引用块：纯浅灰平底圆角框 (#f3f3f3)，无左侧边条竖线，内衬透气舒适
+- 引用块：纯浅灰平底圆角框 (#f3f3f3)，左侧灰竖线，内衬透气舒适
 - 斑马纹现代数据表格与深色代码块
 - 高清 2x Retina 采样与自适应无损纵向裁切
 
@@ -124,6 +124,9 @@ def clean_markdown_for_rendering(text: str) -> str:
     # 1. 清理大模型对中文长句滥用的反引号（4个及以上汉字），转为优雅的加粗，彻底杜绝满屏碎红斑
     text = re.sub(r"`([^`\n]*?[\u4e00-\u9fa5]{4,}[^`\n]*?)`", r"**\1**", text)
 
+    # 1b. 修复加粗标记粘连（如 ****）→ 拆分为独立的 ** **，避免 Markdown 解析器吞噬
+    text = re.sub(r"\*{4,}", "** **", text)
+
     # 2. 规范表格前后的空行，避免 CommonMark 将紧跟段落的表格误判为普通文本
     text = re.sub(r"([^\n])\n(\|[^\n]+\|\s*\n\|[-: |]+\|)", r"\1\n\n\2", text)
     text = re.sub(r"(\|[^\n]+\|\s*)\n([^\n|])", r"\1\n\n\2", text)
@@ -208,6 +211,18 @@ def clean_markdown_for_rendering(text: str) -> str:
 
     # 5. 折叠超过 3 行以上的连续空行，保持排版呼吸感
     cleaned = re.sub(r"\n{3,}", "\n\n", protected.strip())
+
+    # 6. 修复 ** 加粗标记异常（防止 ** 被反引号包裹后当作字面星号渲染）
+    # 6a. 清理反引号代码内残留的 ** 标记
+    def _clean_bold_in_code(m):
+        inner = m.group(1).replace("**", "")
+        return f"`{inner}`" if inner.strip() else m.group(0)
+    cleaned = re.sub(r"`([^`\n]*\*\*[^`\n]*)`", _clean_bold_in_code, cleaned)
+
+    # 6b. 修复跨代码边界的断裂加粗对：`text**` → `text` **  和  `**text` → ** `text`
+    cleaned = re.sub(r"`([^`\n]*?)\*\*`", lambda m: f"`{m.group(1)}` **" if m.group(1).strip() else "**", cleaned)
+    cleaned = re.sub(r"`\*\*([^`\n]*?)`", lambda m: f"** `{m.group(1)}`" if m.group(1).strip() else "**", cleaned)
+
     return cleaned
 
 
@@ -235,14 +250,14 @@ def _get_builtin_font_face_css() -> str:
 
 
 def markdown_to_antigravity_html(text: str) -> str:
-    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式气泡卡片 HTML。
+    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式卡片 HTML。
 
     严格采纳 Antigravity 宿主原生排版与色彩系统：
-    - 页面底板：--bg-page (#f0f2f5) 柔和微灰
-    - 消息主体气泡：--bg-card (#ffffff) 纯白卡片，带 12px 圆角与柔和微阴影
-    - 正文字体栈：优先内置思源黑体，完美覆盖 Windows / macOS / Linux (微米黑与思源黑体)
-    - 行内代码：克制典雅的暗红高亮 (--code-color: #a31515, 底色 #f3f4f6, 4px 圆角)
-    - 引用块：经典灰竖条 (3.5px solid #cbd5e1) + 浅灰卡片平底
+    - 页面底板：--bg-page (#f0f2f5) 柔和浅灰蓝
+    - 消息主体：纯白圆角卡片 (#ffffff)，10px 圆角 + 左侧 3.5px 灰蓝竖线 + 微阴影
+    - 正文字体栈：优先内置思源黑体，完美覆盖 Windows / macOS / Linux
+    - 行内代码：克制典雅的暗红高亮 (--code-color: #a31515, 底色 #f3f4f6, 3px 圆角)
+    - 引用块：经典灰竖条 (3px solid #cbd5e1) + 浅灰卡片平底
     - 表格：md-table-wrapper 圆角卡片，消除边框重叠，表头 #f8fafc 浅底
     """
     cleaned_text = clean_markdown_for_rendering(text)
@@ -283,7 +298,7 @@ def markdown_to_antigravity_html(text: str) -> str:
 <style>
 {builtin_font_css}
   :root {{
-    --bg-page: #f9f9f9;
+    --bg-page: #f0f2f5;
     --text-primary: #101010;
     --text-secondary: #374151;
     --text-muted: #6b7280;
@@ -299,9 +314,9 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   body {{
     background-color: var(--bg-page);
-    padding: 24px 28px;
+    padding: 16px;
     width: 800px;
-    font-family: 'AntigravitySans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
+    font-family: 'AntigravitySans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
     font-size: 14.5px;
     line-height: 1.66;
     color: var(--text-primary);
@@ -310,11 +325,12 @@ def markdown_to_antigravity_html(text: str) -> str:
     text-rendering: optimizeLegibility;
   }}
   .antigravity-bubble {{
-    background-color: transparent;
-    border: none;
-    border-radius: 0;
-    padding: 0;
-    box-shadow: none;
+    background-color: #ffffff;
+    border: 1px solid #e8eaed;
+    border-left: 3.5px solid #94a3b8;
+    border-radius: 10px;
+    padding: 24px 26px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.03);
     word-break: break-word;
   }}
   h1, h2, h3, h4, h5, h6 {{
