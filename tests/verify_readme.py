@@ -55,6 +55,8 @@ LABEL = {
     "active_reply_unanswered_seconds": "冷场等待秒数",
     "active_reply_quiet_hours": "夜间免打扰时段",
     "active_reply_groups": "生效群白名单",
+    "t2i_detailed_reply_enabled": "详细长回复转卡片长图",
+    "t2i_min_chars": "转卡片长图字数门槛",
 }
 table = README.split("## 五、配置项")[1].split("\n---\n")[0]
 for key in sorted(SCHEMA):

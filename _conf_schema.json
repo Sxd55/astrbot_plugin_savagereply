@@ -293,5 +293,17 @@
     "type": "list",
     "hint": "填入群号列表（如 [\"123456\", \"789012\"]）。留空表示对 Bot 所在的所有群生效。",
     "default": []
+  },
+  "t2i_detailed_reply_enabled": {
+    "description": "【视觉长图】详细长回复转卡片长图",
+    "type": "bool",
+    "hint": "详细输出或多点数据分析时，自动渲染为具有 Antigravity 优雅排版与关键词标红的高清卡片长图发送。渲染失败自动优雅回退纯文本。",
+    "default": true
+  },
+  "t2i_min_chars": {
+    "description": "【视觉长图】转卡片长图字数门槛",
+    "type": "int",
+    "hint": "当回复字数达到此阈值且包含丰富结构时触发卡片长图渲染，默认 200 字。",
+    "default": 200
   }
 }

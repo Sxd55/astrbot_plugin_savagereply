@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 
 from astrbot.api import AstrBotConfig, logger
@@ -41,6 +42,10 @@ try:
         SUPPORTED_PRESETS,
         PRESET_NAMES,
     )
+    from .savagereply.t2i import (
+        render_markdown_to_image,
+        should_render_as_image,
+    )
 except ImportError:
     from savagereply import PLUGIN_NAME, __version__
     from savagereply.config import (
@@ -70,6 +75,10 @@ except ImportError:
         SUPPORTED_PRESETS,
         PRESET_NAMES,
     )
+    from savagereply.t2i import (
+        render_markdown_to_image,
+        should_render_as_image,
+    )
 
 MIN_PRIORITY = -100000000000000000
 
@@ -89,6 +98,7 @@ BOOL_CONFIG_KEYS = (
     "verify_log_only",
     "active_reply_enabled",
     "active_reply_unanswered_break",
+    "t2i_detailed_reply_enabled",
 )
 
 INT_CONFIG_KEYS = (
@@ -101,6 +111,7 @@ INT_CONFIG_KEYS = (
     "short_tail_chars",
     "paragraph_max_chars",
     "active_reply_daily_limit",
+    "t2i_min_chars",
 )
 
 FLOAT_CONFIG_KEYS = (
@@ -211,6 +222,8 @@ class SavageReplyPlugin(Star):
             "active_reply_unanswered_seconds": options.active_reply_unanswered_seconds,
             "active_reply_quiet_hours": options.active_reply_quiet_hours,
             "active_reply_groups": list(options.active_reply_groups),
+            "t2i_detailed_reply_enabled": options.t2i_detailed_reply_enabled,
+            "t2i_min_chars": options.t2i_min_chars,
         }
 
     async def page_config(self):
@@ -605,32 +618,49 @@ class SavageReplyPlugin(Star):
             else:
                 tail_comps.append(comp)
 
-        text = "".join(plain_texts)
-        if not text.strip():
+        raw_text = "".join(plain_texts)
+        if not raw_text.strip():
             return
-
-        if options.strip_markdown_marks:
-            # QQ 等不渲染 Markdown 的平台会把 ** 原样显示，发送前摘掉成对标记。
-            text = strip_emphasis(text)
 
         if options.verify_enabled:
             user_text = getattr(event, "message_str", "") or ""
-            risks = scan_risks(text, options, user_text=user_text)
+            risks = scan_risks(raw_text, options, user_text=user_text)
             if risks:
                 logger.warning(
                     "Savage's Reply risk scan: %s",
                     "; ".join(f"{risk.kind}={risk.snippet!r}" for risk in risks),
                 )
                 if not options.verify_log_only and options.verify_suffix_text:
-                    text = text.rstrip() + options.verify_suffix_text
+                    raw_text = raw_text.rstrip() + options.verify_suffix_text
 
         marked: list[str] | None = None
         # 始终解析：即使功能关闭，也要剥掉模型可能自己输出的标记，避免泄漏给用户。
-        clean_text, marked = parse_marker(text)
+        clean_raw_text, marked = parse_marker(raw_text)
         if marked and not options.marker_enabled:
             marked = None
 
-        decision = decide(clean_text, options)
+        decision = decide(clean_raw_text, options)
+
+        # 0. 详细长回复/多点数据分析转高质感卡片长图 (T2I)
+        if should_render_as_image(clean_raw_text, options, decision.reason):
+            try:
+                img_path = await render_markdown_to_image(clean_raw_text)
+                if img_path and os.path.exists(img_path):
+                    result.chain = [*head_comps, Image.fromFileSystem(img_path), *tail_comps]
+                    if options.debug_log:
+                        logger.info("Savage's Reply rendered card image: %s", img_path)
+                    return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Savage's Reply card render failed, falling back to text: %s", exc)
+
+        # 普通文本分支：若开启了剥离 Markdown 强调标记，则在此时剥离
+        if options.strip_markdown_marks:
+            clean_text = strip_emphasis(clean_raw_text)
+            if marked:
+                marked = [strip_emphasis(m) for m in marked]
+        else:
+            clean_text = clean_raw_text
+
         # 1. 最高优先级完整性保护：代码块、表格、数学公式、结构化数据分析清单等，严格整条完整发送，绝不下刀
         if decision.mode == MODE_BYPASS and decision.reason in {
             "code_block",
