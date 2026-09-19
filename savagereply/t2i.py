@@ -121,17 +121,7 @@ def clean_markdown_for_rendering(text: str) -> str:
 
     import re
 
-    # 1. 清理大模型对中文长句滥用的反引号（4个及以上汉字），转为优雅的加粗，彻底杜绝满屏碎红斑
-    text = re.sub(r"`([^`\n]*?[\u4e00-\u9fa5]{4,}[^`\n]*?)`", r"**\1**", text)
-
-    # 1b. 修复加粗标记粘连（如 ****）→ 拆分为独立的 ** **，避免 Markdown 解析器吞噬
-    text = re.sub(r"\*{4,}", "** **", text)
-
-    # 2. 规范表格前后的空行，避免 CommonMark 将紧跟段落的表格误判为普通文本
-    text = re.sub(r"([^\n])\n(\|[^\n]+\|\s*\n\|[-: |]+\|)", r"\1\n\n\2", text)
-    text = re.sub(r"(\|[^\n]+\|\s*)\n([^\n|])", r"\1\n\n\2", text)
-
-    # 3. 占位保护已有结构
+    # 1. 占位保护已有语法结构（围栏代码块必须最先保护）
     placeholders = []
 
     def save_placeholder(m):
@@ -140,9 +130,38 @@ def clean_markdown_for_rendering(text: str) -> str:
         return f"@@PROTECTED_{idx}@@"
 
     # 保护围栏代码块
-    protected = re.sub(r"```[\s\S]*?```", save_placeholder, text)
-    # 保护已有行内反引号
-    protected = re.sub(r"`[^`\n]+`", save_placeholder, protected)
+    text = re.sub(r"```[\s\S]*?```", save_placeholder, text)
+
+    # 2. 严格按成对反引号解析行内代码，仅对真正滥用反引号的纯中文长句（>=5汉字）优雅降级为加粗
+    # 彻底杜绝全局正则跨代码块配对（将闭合反引号与下一起始反引号误判为一对）的灾难
+    lines = text.split("\n")
+    processed_lines = []
+    for line in lines:
+        parts = line.split("`")
+        if len(parts) >= 3:
+            new_parts = []
+            for i, part in enumerate(parts):
+                if i % 2 == 1:
+                    # 真正的成对行内代码内部
+                    chinese_chars = len(re.findall(r"[\u4e00-\u9fa5]", part))
+                    # 包含 5 个以上汉字，且不是包含常见运算符的技术表达式时才降级为加粗
+                    if chinese_chars >= 5 and not any(op in part for op in ["+", "-", "*", "/", "=", "--"]):
+                        new_parts.append(f"**{part}**")
+                    else:
+                        new_parts.append(f"`{part}`")
+                else:
+                    new_parts.append(part)
+            processed_lines.append("".join(new_parts))
+        else:
+            processed_lines.append(line)
+    text = "\n".join(processed_lines)
+
+    # 3. 规范表格前后的空行，避免 CommonMark 将紧跟段落的表格误判为普通文本
+    text = re.sub(r"([^\n])\n(\|[^\n]+\|\s*\n\|[-: |]+\|)", r"\1\n\n\2", text)
+    text = re.sub(r"(\|[^\n]+\|\s*)\n([^\n|])", r"\1\n\n\2", text)
+
+    # 4. 占位保护已有的合法行内反引号、表格线、链接与 HTML
+    protected = re.sub(r"`[^`\n]+`", save_placeholder, text)
     # 保护表格分隔行 (| --- | :---: |)，防止短横线被命令行参数规则误匹配
     protected = re.sub(r"\|(?:\s*:?-+:?\s*\|)+", save_placeholder, protected)
     # 保护 Markdown 链接与图片
@@ -209,20 +228,22 @@ def clean_markdown_for_rendering(text: str) -> str:
     for i, orig in enumerate(placeholders):
         protected = protected.replace(f"@@PROTECTED_{i}@@", orig)
 
-    # 5. 折叠超过 3 行以上的连续空行，保持排版呼吸感
+    # 5. 规范化 Markdown 加粗标记，彻底修复 LLM 常见的星号粘连、空格错位与标点边界冲突
+    # 5.1 连续 4 个以上星号拆开为 ** **
+    protected = re.sub(r"\*{4,}", "** **", protected)
+    # 5.2 修复 ** 紧贴在代码块或反引号边缘且没有空格隔开：`code`**text** -> `code` **text**
+    protected = re.sub(r"(`)\*\*([^\s*])", r"\1 **\2", protected)
+    protected = re.sub(r"([^\s*])\*\*(`)", r"\1** \2", protected)
+    # 5.3 修复星号内侧的多余空格（CommonMark 规范禁止星号内侧有空格）：** text ** -> **text**
+    protected = re.sub(r"\*\*\s+([^\*\n]+?)\s+\*\*", r"**\1**", protected)
+    protected = re.sub(r"\*\*\s+([^\*\n]+?)\*\*", r"**\1**", protected)
+    protected = re.sub(r"\*\*([^\*\n]+?)\s+\*\*", r"**\1**", protected)
+    # 5.4 修复加粗结束后紧跟英文字母但没有空格导致的 CommonMark 右定界符失效：**text**word -> **text** word
+    protected = re.sub(r"(\*\*[^\*\n]+?\*\*)([a-zA-Z0-9])", r"\1 \2", protected)
+    protected = re.sub(r"([a-zA-Z0-9])(\*\*[^\*\n]+?\*\*)", r"\1 \2", protected)
+
+    # 6. 折叠超过 3 行以上的连续空行，保持排版呼吸感
     cleaned = re.sub(r"\n{3,}", "\n\n", protected.strip())
-
-    # 6. 修复 ** 加粗标记异常（防止 ** 被反引号包裹后当作字面星号渲染）
-    # 6a. 清理反引号代码内残留的 ** 标记
-    def _clean_bold_in_code(m):
-        inner = m.group(1).replace("**", "")
-        return f"`{inner}`" if inner.strip() else m.group(0)
-    cleaned = re.sub(r"`([^`\n]*\*\*[^`\n]*)`", _clean_bold_in_code, cleaned)
-
-    # 6b. 修复跨代码边界的断裂加粗对：`text**` → `text` **  和  `**text` → ** `text`
-    cleaned = re.sub(r"`([^`\n]*?)\*\*`", lambda m: f"`{m.group(1)}` **" if m.group(1).strip() else "**", cleaned)
-    cleaned = re.sub(r"`\*\*([^`\n]*?)`", lambda m: f"** `{m.group(1)}`" if m.group(1).strip() else "**", cleaned)
-
     return cleaned
 
 

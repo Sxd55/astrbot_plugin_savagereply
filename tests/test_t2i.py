@@ -67,6 +67,20 @@ class TestT2IModule(unittest.TestCase):
         self.assertIn("- 列表项 1", cleaned)
         self.assertIn("> 引用说明", cleaned)
 
+        # 专项测试：修复加粗星号粘连、空格错位与代码块边界
+        complex_md = "只留稳的 `1-2`**秒；转场用硬切；**`BGM + 音效 + 字幕` 三件套遮瑕"
+        c_res = clean_markdown_for_rendering(complex_md)
+        # 代码块与加粗之间必须有空格，避免 CommonMark 错判或当成字面字符
+        self.assertIn("`1-2` **秒；转场用硬切；** `BGM + 音效 + 字幕`", c_res)
+
+        # 专项测试：星号内侧空格移除
+        space_md = "** 核心洞察 **：能用的标准不是好看"
+        self.assertEqual(clean_markdown_for_rendering(space_md), "**核心洞察**：能用的标准不是好看")
+
+        # 专项测试：连续星号 **** 自动拆解
+        quad_md = "重点****解析"
+        self.assertIn("** **", clean_markdown_for_rendering(quad_md))
+
     def test_render_markdown_to_image_sync(self):
         text = (
             "## 核心特性评估报告\n\n"
