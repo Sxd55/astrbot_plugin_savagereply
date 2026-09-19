@@ -216,10 +216,10 @@ def clean_markdown_for_rendering(text: str) -> str:
 
     # 5. 精准克制的高亮匹配（对齐 Antigravity 原生风格，严禁泛滥）
 
-    # 5.1 引用块内的提示/举例前缀美化（> 提示： -> > **提示**：）
+    # 5.1 引用块内的提示/导引前缀美化（> 提示： -> > **提示**：，> 核心洞察: -> > **核心洞察**：）
     protected = re.sub(
-        r"(^> *(?:提示|举例|注意|说明|技巧|警告|参考)[:：])",
-        lambda m: f"> **{m.group(1).lstrip('> *').rstrip(':：')}**：",
+        r"(^> *(?!\*\*)[^\n:*`]{2,12}[:：])",
+        lambda m: "> **" + m.group(1).lstrip("> *").rstrip(":：").strip() + "**：",
         protected,
         flags=re.MULTILINE,
     )
@@ -231,9 +231,22 @@ def clean_markdown_for_rendering(text: str) -> str:
         protected,
     )
 
-    # 5.3 常见脚本与配置文件名 (tests/test_t2i.py, config.json, main.py 等)
+    # 5.3 常见脚本与配置文件名 (tests/test_t2i.py, config.json, main.py, README 等)
     protected = re.sub(
-        r"(?<![a-zA-Z0-9`/])([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+\.(?:py|json|yaml|yml|js|ts|sh|bat|md|css|html))(?![a-zA-Z0-9`])",
+        r"(?<![a-zA-Z0-9`/])([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+\.(?:py|json|yaml|yml|js|ts|sh|bat|md|css|html)|README)(?![a-zA-Z0-9`])",
+        r"`\1`",
+        protected,
+        flags=re.IGNORECASE,
+    )
+
+    # 5.4 核心量化指标与数据规格暗红标红（60-90秒, 5镜, 720p, 1080p, 60fps, 15199字, 3800 等）
+    protected = re.sub(
+        r"(?<![a-zA-Z0-9`])(\d+(?:-\d+)?(?:秒|分|小时|镜|字|p|k|fps))(?![a-zA-Z0-9`])",
+        r"`\1`",
+        protected,
+    )
+    protected = re.sub(
+        r"(?<![a-zA-Z0-9`])(\b(?:seed|negative|prompt|prompts|lora|checkpoint|workflow|token|tokens)\b)(?![a-zA-Z0-9`])",
         r"`\1`",
         protected,
         flags=re.IGNORECASE,
@@ -259,7 +272,7 @@ def clean_markdown_for_rendering(text: str) -> str:
 
 
 def _ensure_linux_font_installed() -> None:
-    """在 Linux 系统下，自动将插件内置的思源黑体安装/软链接至用户字体目录，
+    """在 Linux 系统下，自动将插件内置的思源黑体安装至用户字体目录，
     确保无头 Chromium 能 100% 原生识别并使用顶级思源黑体，完全免除用户手动配置。
     """
     import platform
@@ -272,16 +285,28 @@ def _ensure_linux_font_installed() -> None:
         if not ttf_file.exists():
             return
 
-        user_font_dir = Path.home() / ".local" / "share" / "fonts"
-        user_font_dir.mkdir(parents=True, exist_ok=True)
-        target = user_font_dir / "NotoSansSC-VF.ttf"
+        target_dirs = [
+            Path.home() / ".local" / "share" / "fonts",
+            Path.home() / ".fonts",
+            Path.home() / "snap" / "chromium" / "common" / ".local" / "share" / "fonts",
+            Path.home() / "snap" / "chromium" / "current" / ".local" / "share" / "fonts",
+        ]
+        import shutil
+        copied_any = False
+        for udir in target_dirs:
+            try:
+                udir.mkdir(parents=True, exist_ok=True)
+                target = udir / "NotoSansSC-VF.ttf"
+                if not target.exists():
+                    shutil.copy2(str(ttf_file), str(target))
+                    copied_any = True
+            except Exception:
+                continue
 
-        if not target.exists():
-            import shutil
-            shutil.copy2(str(ttf_file), str(target))
+        if copied_any:
             # 刷新系统字体缓存
             import subprocess
-            subprocess.run(["fc-cache", "-f", str(user_font_dir)], capture_output=True, timeout=5)
+            subprocess.run(["fc-cache", "-f"], capture_output=True, timeout=5)
     except Exception:
         pass
 
@@ -302,7 +327,7 @@ def _get_builtin_font_face_css() -> str:
   src: url('{uri}') format('{fmt}');
   font-weight: 100 900;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }}
 """
     except Exception:
@@ -357,6 +382,9 @@ def markdown_to_antigravity_html(text: str) -> str:
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap">
 <style>
 {builtin_font_css}
   :root {{
@@ -365,7 +393,7 @@ def markdown_to_antigravity_html(text: str) -> str:
     --text-secondary: #475569;
     --text-muted: #6b7280;
     --border: #e1e4e8;
-    --code-color: #a31515;
+    --code-color: #cf222e; /* Antigravity light theme #a31515 */
     --code-bg: #f6f8fa;
     --table-head: #f8fafc;
   }}
@@ -378,7 +406,7 @@ def markdown_to_antigravity_html(text: str) -> str:
     background-color: var(--bg-page);
     padding: 24px 28px;
     width: 800px;
-    font-family: 'AntigravitySans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-family: 'AntigravitySans', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
     font-size: 14.2px;
     font-weight: 450;
     line-height: 1.68;
@@ -423,25 +451,26 @@ def markdown_to_antigravity_html(text: str) -> str:
     font-style: italic;
     color: #475569;
   }}
-  /* 1:1 像素级精准 Antigravity 标红高亮 */
+  /* 1:1 像素级精准 Antigravity 官方深红标红高亮 */
   code {{
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     font-size: 0.88em;
-    color: var(--code-color);
-    background-color: var(--code-bg);
-    border-radius: 3px;
+    color: #cf222e;
+    background-color: #f6f8fa;
+    border: 1px solid rgba(175, 184, 193, 0.25);
+    border-radius: 4px;
     padding: 1.5px 5px;
     margin: 0 2px;
     white-space: pre-wrap;
     word-break: break-word;
     vertical-align: baseline;
   }}
-  /* 1:1 Antigravity 优雅微灰引用框 */
+  /* 1:1 Antigravity 官方微灰引用框 */
   blockquote {{
-    border-left: 3px solid #cbd5e1;
+    border-left: 3.5px solid #cbd5e1;
     background-color: #f8fafc;
     padding: 10px 16px;
-    margin: 12px 0;
+    margin: 14px 0;
     border-radius: 4px;
     color: #374151;
     font-size: 13.8px;
@@ -452,32 +481,33 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   blockquote p:first-child {{ margin-top: 0; }}
   blockquote p:last-child {{ margin-bottom: 0; }}
-  /* 列表排版：对齐图2/图3的次级列表明显缩进与圆点呼吸感 */
+  /* 列表排版：对齐 Antigravity 原生次级列表深度缩进与圆点呼吸感 */
   ul, ol {{
-    padding-left: 24px;
-    margin: 6px 0 10px 0;
+    padding-left: 20px;
+    margin: 8px 0 10px 0;
   }}
   ul {{
     list-style-type: disc;
   }}
   ul ul {{
-    list-style-type: circle;
+    list-style-type: disc;
   }}
   li {{
     margin-bottom: 5px;
-    line-height: 1.62;
+    line-height: 1.68;
     color: var(--text-primary);
   }}
   li::marker {{
-    color: #374151;
+    color: #475569;
+    font-size: 0.88em;
   }}
   li:last-child {{
     margin-bottom: 0;
   }}
-  /* 嵌套次级列表：深度缩进呈现层级阶梯感（1:1 复刻图3） */
+  /* 嵌套次级列表：深度缩进呈现阶梯层级感（1:1 复刻 Antigravity [&_ul]:pl-10） */
   li > ul, li > ol {{
     margin: 4px 0 6px 0;
-    padding-left: 22px;
+    padding-left: 32px;
   }}
   li > p {{
     margin-bottom: 4px;
@@ -612,6 +642,8 @@ def render_markdown_to_image_sync(
             "--font-render-hinting=medium",
             "--enable-font-antialiasing",
             "--force-device-scale-factor=2",
+            "--virtual-time-budget=1000",
+            "--run-all-compositor-stages-before-draw",
             f"--window-size=800,{est_height}",
             f"--screenshot={tmp_shot}",
             Path(tmp_html_path).resolve().as_uri(),

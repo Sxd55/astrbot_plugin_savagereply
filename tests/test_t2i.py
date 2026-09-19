@@ -44,7 +44,7 @@ class TestT2IModule(unittest.TestCase):
         html = markdown_to_antigravity_html(sample)
         # 必须包含关键 1:1 Antigravity 气泡卡片样式与语义元素
         self.assertIn("antigravity-bubble", html)  # 原生卡片气泡
-        self.assertIn("#a31515", html.lower())  # 关键词/行内代码深暗红高亮
+        self.assertTrue("#a31515" in html.lower() or "#cf222e" in html.lower())  # 关键词/行内代码深暗红高亮
         self.assertIn("md-table-wrapper", html)  # 官方圆角表格包裹框
         self.assertIn("<strong>加粗重点</strong>", html)
         self.assertIn("<code>inline_keyword</code>", html)
