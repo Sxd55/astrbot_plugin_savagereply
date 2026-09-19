@@ -107,20 +107,104 @@ def find_browser_executable() -> str | None:
 
 
 def clean_markdown_for_rendering(text: str) -> str:
-    """对 Markdown 进行安全的预处理，确保渲染稳定性。
+    """对 Markdown 进行结构规范化与智能安全高亮增强，确保 1:1 原汁原味呈现 Antigravity 红色标红效果。
 
-    纯净原则：
-    1. 严格不篡改、不破坏原文的加粗（**）、标题（#）和列表结构；
-    2. 严格不粗暴乱拆反引号，保持原文语义完整性；
-    3. 规范连续多余空行，保持排版呼吸感。
+    安全增强原则：
+    1. 保护现有语法：围栏代码块、已有反引号、表格线、链接与 HTML 标签严禁二次破坏；
+    2. 自动修正表格空行：确保 CommonMark 解析器能 100% 正确解析 Markdown 表格；
+    3. 智能关键词高亮补偿：自动识别命令行参数（--seed, --ar 16:9）、AI生图与技术核心参数（seed, negative, prompt, 720p）、
+       参数词串（如 negative 后的英文提示词）以及脚本文件（policy.py），自动赋予反引号包裹，使其精准呈现 Antigravity 官方暗红高亮；
+    4. 折叠异常连续空行，保持干净紧凑的呼吸感排版。
     """
     if not text:
         return ""
 
     import re
 
-    # 折叠超过 3 行以上的连续空行，保持干净紧凑的段间距
-    cleaned = re.sub(r"\n{3,}", "\n\n", text.strip())
+    # 1. 规范表格前后的空行，避免 CommonMark 将紧跟段落的表格误判为普通文本
+    text = re.sub(r"([^\n])\n(\|[^\n]+\|\s*\n\|[-: |]+\|)", r"\1\n\n\2", text)
+    text = re.sub(r"(\|[^\n]+\|\s*)\n([^\n|])", r"\1\n\n\2", text)
+
+    # 2. 占位保护已有结构
+    placeholders = []
+
+    def save_placeholder(m):
+        idx = len(placeholders)
+        placeholders.append(m.group(0))
+        return f"@@PROTECTED_{idx}@@"
+
+    # 保护围栏代码块
+    protected = re.sub(r"```[\s\S]*?```", save_placeholder, text)
+    # 保护已有行内反引号
+    protected = re.sub(r"`[^`\n]+`", save_placeholder, protected)
+    # 保护表格分隔行 (| --- | :---: |)，防止短横线被命令行参数规则误匹配
+    protected = re.sub(r"\|(?:\s*:?-+:?\s*\|)+", save_placeholder, protected)
+    # 保护 Markdown 链接与图片
+    protected = re.sub(r"!?\[.*?\]\(.*?\)", save_placeholder, protected)
+    # 保护 HTML 标签
+    protected = re.sub(r"<[^>]+>", save_placeholder, protected)
+
+    # 3. 智能安全高亮匹配
+
+    # 3.1 引用块内的提示/举例前缀美化（> 提示： -> > **提示**：）
+    protected = re.sub(
+        r"(^> *(?:提示|举例|注意|说明|技巧|警告|参考)[:：])",
+        lambda m: f"> **{m.group(1).lstrip('> *').rstrip(':：')}**：",
+        protected,
+        flags=re.MULTILINE,
+    )
+
+    # 3.2 英文参数词串 / 提示词列表 (如 'crowded, extra limbs, distorted face, messy layout')
+    # 匹配逗号分隔的 2 个以上连续英文词汇短语
+    protected = re.sub(
+        r"(?<![a-zA-Z0-9`])([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)?(?:,\s*[a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)?){2,})(?![a-zA-Z0-9`])",
+        r"`\1`",
+        protected,
+    )
+
+    # 3.3 命令行参数与选项 (--ar 16:9, --seed 12345, --v 6) 首字符必须是字母，杜绝匹配纯横线
+    protected = re.sub(
+        r"(?<![a-zA-Z0-9`])(--[a-zA-Z][a-zA-Z0-9_-]*(?:\s+[a-zA-Z0-9_.:/-]+)?)(?![a-zA-Z0-9`])",
+        r"`\1`",
+        protected,
+    )
+
+    # 3.4 常见 AI、生图与技术核心参数名 (seed, negative, prompt, lora, checkpoint, steps, cfg 等)
+    tech_keywords = [
+        "seed", "negative", "prompt", "prompts", "lora", "checkpoint",
+        "steps", "cfg", "sampler", "workflow", "clip_skip", "denoise", "vae",
+        "controlnet", "comfyui", "midjourney", "sdxl", "flux",
+    ]
+    for kw in tech_keywords:
+        protected = re.sub(
+            rf"(?<![a-zA-Z0-9`_])({re.escape(kw)})(?![a-zA-Z0-9`_])",
+            r"`\1`",
+            protected,
+            flags=re.IGNORECASE,
+        )
+
+    # 3.5 分辨率与规格参数 (720p, 1080p, 2k, 4k, 60fps)
+    protected = re.sub(
+        r"(?<![a-zA-Z0-9`])(\d{3,4}p|[248]k|\d{2,3}fps)(?![a-zA-Z0-9`])",
+        r"`\1`",
+        protected,
+        flags=re.IGNORECASE,
+    )
+
+    # 3.6 常见脚本与配置文件名 (policy.py, config.json, docker-compose.yml 等)
+    protected = re.sub(
+        r"(?<![a-zA-Z0-9`])([a-zA-Z0-9_-]+\.(?:py|json|yaml|yml|js|ts|sh|bat|md|css|html))(?![a-zA-Z0-9`])",
+        r"`\1`",
+        protected,
+        flags=re.IGNORECASE,
+    )
+
+    # 4. 还原占位保护结构
+    for i, orig in enumerate(placeholders):
+        protected = protected.replace(f"@@PROTECTED_{i}@@", orig)
+
+    # 5. 折叠超过 3 行以上的连续空行，保持排版呼吸感
+    cleaned = re.sub(r"\n{3,}", "\n\n", protected.strip())
     return cleaned
 
 
