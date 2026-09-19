@@ -51,24 +51,21 @@ class TestT2IModule(unittest.TestCase):
         self.assertIn("<blockquote>", html)
         self.assertIn("<table>", html)
 
-    def test_smart_antigravity_format(self):
-        from savagereply.t2i import smart_antigravity_format
+    def test_clean_markdown_for_rendering(self):
+        from savagereply.t2i import clean_markdown_for_rendering
 
         raw = (
-            "1、先把短剧压小，保完成 只做60-90秒\n"
-            "2、人和景分开锁定 别混着抽\n"
-            "举例：这是一个举例说明\n"
-            "模板：`前景[遮挡] + 主体[站着] + 背景[白墙]`\n"
-            "negative加上：`crowded, extra limbs, distorted face, messy layout, overlapping bodies`"
+            "### 标题\n\n\n\n"
+            "- 列表项 1\n"
+            "- 列表项 2\n\n\n"
+            "> 引用说明\n"
         )
-        formatted = smart_antigravity_format(raw)
-        self.assertIn("#### 1. 先把短剧压小，保完成", formatted)
-        self.assertIn("- 只做60-90秒", formatted)
-        self.assertIn("#### 2. 人和景分开锁定", formatted)
-        self.assertIn("> **举例**：这是一个举例说明", formatted)
-        # 验证符合复合参数反引号被拆解
-        self.assertIn("`前景[遮挡]` + `主体[站着]` + `背景[白墙]`", formatted)
-        self.assertIn("`crowded`, `extra limbs`", formatted)
+        cleaned = clean_markdown_for_rendering(raw)
+        # 折叠多余空行，保持原本语义与结构完整
+        self.assertNotIn("\n\n\n", cleaned)
+        self.assertIn("### 标题", cleaned)
+        self.assertIn("- 列表项 1", cleaned)
+        self.assertIn("> 引用说明", cleaned)
 
     def test_render_markdown_to_image_sync(self):
         text = (
