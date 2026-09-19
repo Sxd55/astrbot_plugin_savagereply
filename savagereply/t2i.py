@@ -274,9 +274,15 @@ def markdown_to_antigravity_html(text: str) -> str:
 
 
 def _get_image_cache_dir() -> Path:
-    cache_dir = Path(tempfile.gettempdir()) / "savagereply_images"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir
+    # 优先使用插件内部数据目录或家目录，避免 Linux Snap / AppArmor 对 /tmp 的沙箱隔离
+    base_dir = Path(__file__).resolve().parent.parent / "data" / "t2i_cache"
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return base_dir
+    except Exception:
+        fallback = Path.home() / ".astrbot_t2i_cache"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
 
 
 def render_markdown_to_image_sync(
@@ -292,19 +298,15 @@ def render_markdown_to_image_sync(
     from PIL import Image, ImageChops
 
     html_content = markdown_to_antigravity_html(text)
-    tmp_html = tempfile.NamedTemporaryFile(
-        suffix=".html",
-        delete=False,
-        mode="w",
-        encoding="utf-8",
-    )
-    tmp_html_path = tmp_html.name
-    tmp_html.write(html_content)
-    tmp_html.close()
+    cache_dir = _get_image_cache_dir()
+    file_id = uuid.uuid4().hex[:12]
+    tmp_html_file = cache_dir / f"render_{file_id}.html"
+    tmp_html_path = str(tmp_html_file.resolve())
+    tmp_html_file.write_text(html_content, encoding="utf-8")
 
-    tmp_shot = tmp_html_path + ".shot.png"
+    tmp_shot = str((cache_dir / f"shot_{file_id}.png").resolve())
     if not output_path:
-        out_file = _get_image_cache_dir() / f"card_{uuid.uuid4().hex[:12]}.png"
+        out_file = cache_dir / f"card_{file_id}.png"
         output_path = str(out_file.resolve())
 
     try:
@@ -325,7 +327,28 @@ def render_markdown_to_image_sync(
             capture_output=True,
             timeout=timeout_seconds,
         )
-        if res.returncode != 0 or not os.path.exists(tmp_shot):
+        if res.returncode != 0:
+            err_msg = (res.stderr or b"").decode(errors="ignore").strip()
+            out_msg = (res.stdout or b"").decode(errors="ignore").strip()
+            try:
+                from astrbot.api import logger
+                logger.warning(
+                    "Savage's Reply: 浏览器截图命令失败 (exitcode=%s, browser=%s): %s %s",
+                    res.returncode,
+                    browser,
+                    err_msg[:300],
+                    out_msg[:300],
+                )
+            except Exception:
+                pass
+            return None
+
+        if not os.path.exists(tmp_shot):
+            try:
+                from astrbot.api import logger
+                logger.warning("Savage's Reply: 截图目标文件未产生: %s", tmp_shot)
+            except Exception:
+                pass
             return None
 
         with Image.open(tmp_shot) as im:
@@ -341,11 +364,17 @@ def render_markdown_to_image_sync(
             else:
                 im.save(output_path, "PNG")
         return output_path
-    except Exception:
+    except Exception as exc:
+        try:
+            from astrbot.api import logger
+            logger.warning("Savage's Reply: 渲染长图捕获到异常: %s", exc)
+        except Exception:
+            pass
         return None
     finally:
         try:
-            os.remove(tmp_html_path)
+            if os.path.exists(tmp_html_path):
+                os.remove(tmp_html_path)
         except OSError:
             pass
         try:
