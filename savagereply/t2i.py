@@ -121,11 +121,14 @@ def clean_markdown_for_rendering(text: str) -> str:
 
     import re
 
-    # 1. 规范表格前后的空行，避免 CommonMark 将紧跟段落的表格误判为普通文本
+    # 1. 清理大模型对中文长句滥用的反引号（4个及以上汉字），转为优雅的加粗，彻底杜绝满屏碎红斑
+    text = re.sub(r"`([^`\n]*?[\u4e00-\u9fa5]{4,}[^`\n]*?)`", r"**\1**", text)
+
+    # 2. 规范表格前后的空行，避免 CommonMark 将紧跟段落的表格误判为普通文本
     text = re.sub(r"([^\n])\n(\|[^\n]+\|\s*\n\|[-: |]+\|)", r"\1\n\n\2", text)
     text = re.sub(r"(\|[^\n]+\|\s*)\n([^\n|])", r"\1\n\n\2", text)
 
-    # 2. 占位保护已有结构
+    # 3. 占位保护已有结构
     placeholders = []
 
     def save_placeholder(m):
