@@ -23,6 +23,7 @@ def check(name: str, ok: bool, detail: str = ""):
 # 1. README config table keys vs schema + ReplyOptions defaults.
 # README uses Chinese labels; map every schema key to its row label fragment.
 LABEL = {
+    "config_preset": "场景预设方案",
     "enabled": "总开关", "only_llm": "仅处理 LLM 回复", "platform_exclude": "跳过的平台",
     "session_blacklist": "会话黑名单", "min_total_chars": "最短分段字数",
     "max_total_chars": "最长分段字数", "segment_min_chars": "分段最短长度",

@@ -33,6 +33,14 @@ try:
     )
     from .savagereply.verify import scan_risks
     from .savagereply.gate import ActiveGate
+    from .savagereply.presets import (
+        diff_preset,
+        format_preset_diff_text,
+        get_preset_defaults,
+        resolve_effective_config,
+        SUPPORTED_PRESETS,
+        PRESET_NAMES,
+    )
 except ImportError:
     from savagereply import PLUGIN_NAME, __version__
     from savagereply.config import (
@@ -54,6 +62,14 @@ except ImportError:
     )
     from savagereply.verify import scan_risks
     from savagereply.gate import ActiveGate
+    from savagereply.presets import (
+        diff_preset,
+        format_preset_diff_text,
+        get_preset_defaults,
+        resolve_effective_config,
+        SUPPORTED_PRESETS,
+        PRESET_NAMES,
+    )
 
 MIN_PRIORITY = -100000000000000000
 
@@ -356,8 +372,20 @@ class SavageReplyPlugin(Star):
             )
 
             if fire:
-                event.is_at_or_wake_command = True
-                event.set_extra("_savage_active_reply", True)
+                try:
+                    event.is_at_or_wake_command = True
+                except Exception:
+                    pass
+                if hasattr(event, "set_wake_up") and callable(event.set_wake_up):
+                    try:
+                        event.set_wake_up(True)
+                    except Exception:
+                        pass
+                try:
+                    event.set_extra("_is_wake", True)
+                    event.set_extra("_savage_active_reply", True)
+                except Exception:
+                    pass
                 self.gate.mark_fired(group_id)
                 if options.debug_log:
                     logger.info(
@@ -835,7 +863,7 @@ class SavageReplyPlugin(Star):
 
         # 3. L2 savagereply
         lines.append(
-            f"• [L2 交互层] savagereply: ✅ 正常运行 (v{__version__}) | 接话: {'开启' if options.active_reply_enabled else '关闭'} | 模式: {options.active_reply_mode}"
+            f"• [L2 交互层] savagereply: ✅ 正常运行 (v{__version__}) | 预设: {options.config_preset} | 接话: {'开启' if options.active_reply_enabled else '关闭'} | 模式: {options.active_reply_mode}"
         )
 
         # 4. L3 bili_learn
@@ -858,3 +886,78 @@ class SavageReplyPlugin(Star):
 
         lines.append("╚════════════════════════════════╝")
         return "\n".join(lines)
+
+    @filter.command_group("sreply")
+    def sreply(self):
+        """Savage's Reply 交互指令"""
+
+    @sreply.command("preset")
+    async def cmd_preset(self, event: AstrMessageEvent):
+        """场景预设方案查看、比对与切换（管理员/主人）"""
+        text = (event.message_str or "").strip()
+        parts = text.split()
+        action = parts[2].lower() if len(parts) >= 3 else ""
+        target = parts[3].lower() if len(parts) >= 4 else ""
+
+        if action in SUPPORTED_PRESETS and not target:
+            target = action
+            action = "apply"
+
+        cur = str(self.config.get("config_preset", "natural") or "natural").strip().lower()
+
+        if not action or action in {"list", "show", "status"}:
+            cur_name = PRESET_NAMES.get(cur, cur)
+            lines = [
+                "⚙️【Savage's Reply 场景预设状态】",
+                f"当前生效为 [{cur_name}]",
+                "─────────────────────────────",
+                "可选档位：",
+            ]
+            for p_key, p_name in PRESET_NAMES.items():
+                mark = " (当前生效)" if p_key == cur else ""
+                lines.append(f"• {p_key}: {p_name}{mark}")
+            lines.extend([
+                "─────────────────────────────",
+                "👉 预览变更清单: /sreply preset diff <档位>",
+                "👉 确认切换预设: /sreply preset apply <档位>",
+                "👉 切回自由微调: /sreply preset apply custom",
+            ])
+            yield event.plain_result("\n".join(lines))
+            return
+
+        if action in {"diff", "preview"}:
+            if not target:
+                yield event.plain_result(f"请指定要比对的目标预设，例如：/sreply preset diff lively\n可选：{', '.join(SUPPORTED_PRESETS)}")
+                return
+            if target not in SUPPORTED_PRESETS:
+                yield event.plain_result(f"未知预设档位 [{target}]，可选：{', '.join(SUPPORTED_PRESETS)}")
+                return
+            diffs = diff_preset(self.config, target)
+            yield event.plain_result(format_preset_diff_text(cur, target, diffs, is_applied=False))
+            return
+
+        if action == "apply":
+            if not target:
+                yield event.plain_result(f"请指定要应用的目标预设，例如：/sreply preset apply lively\n可选：{', '.join(SUPPORTED_PRESETS)}")
+                return
+            if target not in SUPPORTED_PRESETS:
+                yield event.plain_result(f"未知预设档位 [{target}]，可选：{', '.join(SUPPORTED_PRESETS)}")
+                return
+            is_admin = False
+            try:
+                is_admin = bool(event.is_admin())
+            except Exception:
+                is_admin = getattr(event, "role", "") in {"admin", "owner"}
+            if not is_admin:
+                yield event.plain_result("权限不足：只有管理员或主人可以切换预设方案。")
+                return
+
+            diffs = diff_preset(self.config, target)
+            self.config["config_preset"] = target
+            if hasattr(self.config, "save_config"):
+                self.config.save_config()
+            yield event.plain_result(format_preset_diff_text(cur, target, diffs, is_applied=True))
+            return
+
+        yield event.plain_result("用法：\n• /sreply preset\n• /sreply preset diff <档位>\n• /sreply preset apply <档位>")
+

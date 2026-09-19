@@ -1,4 +1,12 @@
 {
+  "config_preset": {
+    "description": "场景预设方案",
+    "type": "string",
+    "options": ["natural", "lively", "instant", "custom"],
+    "labels": ["日常拟人（推荐平衡档）", "群聊气氛组（真人群聊智能接话）", "极速直答（单条秒回不分段）", "专家自定义（手动自由微调）"],
+    "hint": "一键开箱即用方案。natural 为拟人打字分段推荐档；lively 在此基础上开启智能免@接话与冷场救场；instant 为极速单条直发；选 custom 则完全走下方全部自定义微调（随时切回 custom 找回所有手动配置）。群内可输入 /sreply preset diff <档位> 查看参数变动清单。",
+    "default": "natural"
+  },
   "enabled": {
     "description": "总开关",
     "type": "bool",

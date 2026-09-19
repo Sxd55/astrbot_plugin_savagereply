@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .presets import get_preset_defaults, resolve_effective_config
+
 DEFAULT_PLATFORM_EXCLUDE = [
     "qq_official",
     "qq_official_webhook",
@@ -75,6 +77,7 @@ def _as_str(value: Any, default: str) -> str:
 
 @dataclass
 class ReplyOptions:
+    config_preset: str = "natural"
     enabled: bool = True
     only_llm: bool = True
     platform_exclude: list[str] = field(default_factory=lambda: list(DEFAULT_PLATFORM_EXCLUDE))
@@ -124,8 +127,17 @@ class ReplyOptions:
 
     @classmethod
     def from_config(cls, raw: Any) -> ReplyOptions:
-        data = raw if isinstance(raw, dict) else {}
+        raw_dict = raw if isinstance(raw, dict) else {}
+        preset_raw = raw_dict.get("config_preset")
+        data = dict(raw_dict)
+        if preset_raw:
+            preset_name = str(preset_raw).strip().lower()
+            if preset_name != "custom":
+                preset_defaults = get_preset_defaults(preset_name)
+                for k, v in preset_defaults.items():
+                    data[k] = resolve_effective_config(raw_dict, k, v)
         options = cls(
+            config_preset=_as_str(data.get("config_preset"), "natural"),
             enabled=_as_bool(data.get("enabled"), True),
             only_llm=_as_bool(data.get("only_llm"), True),
             platform_exclude=_as_str_list(data.get("platform_exclude"), DEFAULT_PLATFORM_EXCLUDE),
