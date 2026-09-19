@@ -106,26 +106,122 @@ def find_browser_executable() -> str | None:
     return None
 
 
-def markdown_to_antigravity_html(text: str) -> str:
-    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式 HTML。
+def smart_antigravity_format(text: str) -> str:
+    """智能规范化 Markdown 文本，使其对齐 Antigravity 专业工程师排版水准。
 
-    严格采纳从 Antigravity 宿主真实前端逆向提取的色彩、圆角与排版规范：
-    - 背景底色：--background (#F9F9F9)
+    核心优化：
+    1. 保护机制：围栏代码块（```）和表格行（|）严格原样保留，绝不下刀；
+    2. 结构化序号规整：将口语化的中文序号（如 "1、先把短剧压小..."）自动升格为
+       带字重加厚的小标题与缩进列表项，杜绝密密麻麻顶格挤在一起；
+    3. 规范化示例引用卡片：将 "举例：" / "注意：" 等自动升格为高质感引用框卡片（> **举例**：...）；
+    4. 拆解误包裹长句的反引号：将整长句反引号还原，并将内部用 " + " 或逗号连接的
+       关键参数独立拆解为多个精致高亮的参数 tag，杜绝大片连贯红底。
+    """
+    if not text:
+        return ""
+
+    import re
+
+    lines = text.splitlines()
+    formatted_lines = []
+    in_fence = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # 保护代码块围栏
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            formatted_lines.append(line)
+            continue
+        if in_fence:
+            formatted_lines.append(line)
+            continue
+
+        # 保护表格行与已有标准 Markdown 列表/标题/引用
+        if stripped.startswith(("|", "#", "- ", "* ", ">", "• ")):
+            formatted_lines.append(line)
+            continue
+
+        if not stripped:
+            formatted_lines.append("")
+            continue
+
+        # 1. 识别中文序号开头的条目，如 "1、先把短剧压小，保完成 只做60-90秒..."
+        m_num = re.match(r"^([0-9]+)[、.．]\s*(.+)$", stripped)
+        if m_num:
+            num = m_num.group(1)
+            content = m_num.group(2).strip()
+            # 分离短标题与详细说明
+            parts = content.split(" ", 1)
+            if len(parts) == 2 and 2 <= len(parts[0]) <= 30:
+                title = parts[0].strip().strip("*")
+                body = parts[1].strip()
+                formatted_lines.append(f"#### {num}. {title}")
+                formatted_lines.append(f"- {body}")
+                continue
+            else:
+                formatted_lines.append(f"#### {num}. {content}")
+                continue
+
+        # 2. 识别 "举例：" / "示例：" / "注意：" / "提示：" / "总结：" 并转为高质感引用框
+        match_callout = re.match(r"^(举例|示例|注意|提示|总结|建议)[：:]\s*(.+)$", stripped)
+        if match_callout:
+            tag = match_callout.group(1)
+            callout_body = match_callout.group(2).strip()
+            if callout_body.startswith("`") and callout_body.endswith("`") and len(callout_body) > 10:
+                callout_body = callout_body[1:-1].strip()
+            formatted_lines.append(f"> **{tag}**：{callout_body}")
+            continue
+
+        formatted_lines.append(line)
+
+    result = "\n".join(formatted_lines)
+
+    # 3. 拆解过长的复合反引号参数串
+    def _split_compound_inline_code(match: re.Match) -> str:
+        code_str = match.group(1)
+        # 如果包含 " + "，拆解为 `A` + `B`
+        if " + " in code_str and len(code_str) > 15:
+            tokens = code_str.split(" + ")
+            return " + ".join(f"`{t.strip()}`" if t.strip() else "" for t in tokens)
+        # 如果包含逗号分隔的多个参数英文词（如 negative 词表）且过长，独立拆解
+        if ", " in code_str and len(code_str) > 35 and not any(ch in code_str for ch in "();{}"):
+            tokens = code_str.split(", ")
+            return ", ".join(f"`{t.strip()}`" if t.strip() else "" for t in tokens)
+        # 如果反引号包裹了包含中文逗号句号的长句，解开包裹避免全句红底
+        if len(code_str) > 40 and ("，" in code_str or "。" in code_str):
+            return code_str
+        return f"`{code_str}`"
+
+    result = re.sub(r"`([^`\n]+)`", _split_compound_inline_code, result)
+    return result
+
+
+def markdown_to_antigravity_html(text: str) -> str:
+    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式气泡卡片 HTML。
+
+    严格采纳 Antigravity 宿主前端源码逆向提取的色彩体系与消息气泡设计：
+    - 外层底板：--app-bg (#f3f4f6)
+    - 消息主体气泡：--card-bg (#ffffff) 纯白卡片，带 14px 圆角与柔和微阴影
     - 正文字体：-apple-system / BlinkMacSystemFont / Segoe UI / PingFang SC
-    - 行内代码：--code (#a31515) + 浅灰透明底色 (rgba(0,0,0,0.05)) + 等宽字体
-    - 引用块：左侧 4px solid var(--border) + 浅灰底色 (var(--muted)) + 圆角包裹
+    - 行内代码：--code (#a31515) + 浅灰底色 (rgba(0,0,0,0.045)) + 等宽代码字体
+    - 引用块：左侧 4px solid var(--border-quote) + 浅灰底色 + 圆角卡片
     - 表格：md-table-wrapper 圆角卡片包裹，消除边框重叠，表头 var(--secondary) 浅灰底
     """
+    # 先行通过 Antigravity 排版智能美化器
+    enhanced_text = smart_antigravity_format(text)
+
     try:
         from markdown_it import MarkdownIt
 
         md = MarkdownIt("commonmark").enable("table").enable("strikethrough")
-        content_html = md.render(text)
+        content_html = md.render(enhanced_text)
     except Exception:
         # 降级：基础文本换行包装
         import html
 
-        escaped = html.escape(text).replace("\n", "<br>")
+        escaped = html.escape(enhanced_text).replace("\n", "<br>")
         content_html = f"<p>{escaped}</p>"
 
     # 1:1 原生 Antigravity 表格结构：自动包裹三层外层容器，实现圆角无溢出裁切与边框重叠消除
@@ -143,18 +239,19 @@ def markdown_to_antigravity_html(text: str) -> str:
 <meta charset="utf-8">
 <style>
   :root {{
-    --background: #F9F9F9;
-    --foreground: #101010;
-    --secondary: #eaeaea;
-    --secondary-foreground: #686a70;
-    --muted: #f3f3f3;
-    --muted-foreground: #989a9e;
+    --app-bg: #f3f4f6;
+    --card-bg: #ffffff;
+    --foreground: #1e2329;
+    --heading: #0f141c;
+    --secondary: #f4f5f7;
+    --muted: #f7f8fa;
     --border: rgba(0, 0, 0, 0.08);
-    --border-solid: #e5e5e5;
+    --border-quote: #d0d7de;
     --code: #a31515;
-    --code-bg: rgba(0, 0, 0, 0.05);
+    --code-bg: rgba(0, 0, 0, 0.045);
+    --radius-card: 14px;
+    --radius-sm: 6px;
     --radius-lg: 8px;
-    --radius-xl: 12px;
   }}
   * {{
     box-sizing: border-box;
@@ -162,27 +259,40 @@ def markdown_to_antigravity_html(text: str) -> str:
     padding: 0;
   }}
   body {{
-    background-color: var(--background);
-    color: var(--foreground);
+    background-color: var(--app-bg);
+    padding: 24px;
+    width: 860px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    font-size: 14.5px;
-    line-height: 1.68;
-    padding: 24px 28px;
-    width: 820px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }}
+  /* 1:1 原生 Antigravity 消息卡片气泡 */
+  .antigravity-bubble {{
+    background-color: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.035), 0 1px 3px rgba(0, 0, 0, 0.02);
+    padding: 26px 30px;
+    color: var(--foreground);
+    font-size: 14.5px;
+    line-height: 1.7;
     word-break: break-word;
   }}
   h1, h2, h3, h4, h5, h6 {{
-    color: var(--foreground);
+    color: var(--heading);
     font-weight: 600;
     line-height: 1.4;
   }}
-  h1 {{ font-size: 20px; margin: 18px 0 12px 0; }}
-  h2 {{ font-size: 18px; margin: 16px 0 10px 0; }}
-  h3 {{ font-size: 16px; margin: 14px 0 8px 0; }}
-  h4 {{ font-size: 15px; margin: 12px 0 6px 0; }}
+  h1 {{ font-size: 20px; margin: 20px 0 12px 0; }}
+  h2 {{ font-size: 18px; margin: 18px 0 10px 0; }}
+  h3 {{ font-size: 16px; margin: 16px 0 8px 0; }}
+  h4 {{
+    font-size: 15.5px;
+    margin: 16px 0 8px 0;
+    color: var(--heading);
+    letter-spacing: -0.01em;
+  }}
   h1:first-child, h2:first-child, h3:first-child, h4:first-child {{
     margin-top: 0;
   }}
@@ -194,35 +304,35 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   strong, b {{
     font-weight: 600;
-    color: var(--foreground);
+    color: var(--heading);
   }}
   em, i {{
     font-style: italic;
     color: #374151;
   }}
-  /* 1:1 原生 Antigravity 标红样式：浅灰微温底色 + VS Code 经典深暗红字体 + 等宽字体 */
+  /* 1:1 原生 Antigravity 标红样式：VS Code 经典深暗红字体 + 浅灰透明底色 + 等宽字体 */
   code {{
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 0.88em;
     color: var(--code);
     background-color: var(--code-bg);
     border-radius: 4px;
-    padding: 1.5px 5px;
+    padding: 2px 6px;
     margin: 0 2px;
     white-space: pre-wrap;
     word-break: break-word;
     vertical-align: baseline;
   }}
-  /* 1:1 原生 Antigravity 引用框：左侧 4px solid var(--border) + 浅灰卡片底色 */
+  /* 1:1 原生 Antigravity 引用框：左侧 4px solid 竖条 + 浅灰卡片底色 */
   blockquote {{
-    border-left: 4px solid #d1d5db;
+    border-left: 4px solid var(--border-quote);
     background-color: var(--muted);
-    padding: 8px 16px;
-    margin: 10px 0;
-    border-radius: 0 6px 6px 0;
-    color: #374151;
+    padding: 10px 16px;
+    margin: 12px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    color: #4b5563;
     font-size: 14px;
-    line-height: 1.6;
+    line-height: 1.65;
   }}
   blockquote p {{
     margin: 4px 0;
@@ -233,14 +343,18 @@ def markdown_to_antigravity_html(text: str) -> str:
   blockquote p:last-child {{
     margin-bottom: 0;
   }}
+  /* 列表层级与圆点 */
   ul, ol {{
     padding-left: 22px;
-    margin: 8px 0 12px 0;
+    margin: 8px 0 14px 0;
   }}
   li {{
-    margin-bottom: 5px;
+    margin-bottom: 6px;
     line-height: 1.68;
-    color: #1f2937;
+    color: var(--foreground);
+  }}
+  li:last-child {{
+    margin-bottom: 0;
   }}
   li > ul, li > ol {{
     margin: 4px 0;
@@ -277,7 +391,7 @@ def markdown_to_antigravity_html(text: str) -> str:
     font-size: 13px;
     line-height: 1.375;
     border: 1px solid var(--border);
-    color: var(--foreground);
+    color: var(--heading);
   }}
   .md-table-wrapper td {{
     padding: 8px 12px;
@@ -329,12 +443,13 @@ def markdown_to_antigravity_html(text: str) -> str:
 </style>
 </head>
 <body>
-  <div id="content">
+  <div class="antigravity-bubble">
     {content_html}
   </div>
 </body>
 </html>
 """
+    return html_template
     return html_template
 
 
@@ -385,7 +500,7 @@ def render_markdown_to_image_sync(
             "--disable-dev-shm-usage",
             "--hide-scrollbars",
             "--force-device-scale-factor=2",
-            f"--window-size=820,{est_height}",
+            f"--window-size=860,{est_height}",
             f"--screenshot={tmp_shot}",
             Path(tmp_html_path).resolve().as_uri(),
         ]
@@ -399,6 +514,7 @@ def render_markdown_to_image_sync(
             out_msg = (res.stdout or b"").decode(errors="ignore").strip()
             try:
                 from astrbot.api import logger
+
                 logger.warning(
                     "Savage's Reply: 浏览器截图命令失败 (exitcode=%s, browser=%s): %s %s",
                     res.returncode,
@@ -413,18 +529,20 @@ def render_markdown_to_image_sync(
         if not os.path.exists(tmp_shot):
             try:
                 from astrbot.api import logger
+
                 logger.warning("Savage's Reply: 截图目标文件未产生: %s", tmp_shot)
             except Exception:
                 pass
             return None
 
         with Image.open(tmp_shot) as im:
-            # 根据沉浸式背景色 RGB (249, 249, 249) 切除视口底部多余留白
-            bg = Image.new(im.mode, im.size, (249, 249, 249))
+            # 动态根据画布背景色切除视口底部多余留白
+            corner_color = im.getpixel((0, 0))
+            bg = Image.new(im.mode, im.size, corner_color)
             diff = ImageChops.difference(im, bg)
             bbox = diff.getbbox()
             if bbox:
-                pad_v = 28 * 2  # 2x Retina 采样下底部保留舒适内边距
+                pad_v = 20 * 2  # 2x Retina 采样下底部保留 20px 对称外边距
                 bottom = min(im.height, bbox[3] + pad_v)
                 cropped = im.crop((0, 0, im.width, bottom))
                 cropped.save(output_path, "PNG")

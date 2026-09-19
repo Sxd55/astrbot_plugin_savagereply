@@ -42,15 +42,33 @@ class TestT2IModule(unittest.TestCase):
             "| 数据A | 数据B |\n"
         )
         html = markdown_to_antigravity_html(sample)
-        # 必须包含关键 1:1 Antigravity 样式与语义元素
-        self.assertIn("#f9f9f9", html.lower())  # 沉浸式浅灰背景
+        # 必须包含关键 1:1 Antigravity 气泡卡片样式与语义元素
+        self.assertIn("antigravity-bubble", html)  # 原生卡片气泡
         self.assertIn("#a31515", html.lower())  # 关键词/行内代码深暗红高亮
-        self.assertIn("#f3f3f3", html.lower())  # 引用框浅灰底
         self.assertIn("md-table-wrapper", html)  # 官方圆角表格包裹框
         self.assertIn("<strong>加粗重点</strong>", html)
         self.assertIn("<code>inline_keyword</code>", html)
         self.assertIn("<blockquote>", html)
         self.assertIn("<table>", html)
+
+    def test_smart_antigravity_format(self):
+        from savagereply.t2i import smart_antigravity_format
+
+        raw = (
+            "1、先把短剧压小，保完成 只做60-90秒\n"
+            "2、人和景分开锁定 别混着抽\n"
+            "举例：这是一个举例说明\n"
+            "模板：`前景[遮挡] + 主体[站着] + 背景[白墙]`\n"
+            "negative加上：`crowded, extra limbs, distorted face, messy layout, overlapping bodies`"
+        )
+        formatted = smart_antigravity_format(raw)
+        self.assertIn("#### 1. 先把短剧压小，保完成", formatted)
+        self.assertIn("- 只做60-90秒", formatted)
+        self.assertIn("#### 2. 人和景分开锁定", formatted)
+        self.assertIn("> **举例**：这是一个举例说明", formatted)
+        # 验证符合复合参数反引号被拆解
+        self.assertIn("`前景[遮挡]` + `主体[站着]` + `背景[白墙]`", formatted)
+        self.assertIn("`crowded`, `extra limbs`", formatted)
 
     def test_render_markdown_to_image_sync(self):
         text = (
