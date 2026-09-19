@@ -258,8 +258,37 @@ def clean_markdown_for_rendering(text: str) -> str:
     return cleaned
 
 
+def _ensure_linux_font_installed() -> None:
+    """在 Linux 系统下，自动将插件内置的思源黑体安装/软链接至用户字体目录，
+    确保无头 Chromium 能 100% 原生识别并使用顶级思源黑体，完全免除用户手动配置。
+    """
+    import platform
+    if platform.system() != "Linux":
+        return
+
+    try:
+        font_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+        ttf_file = font_dir / "NotoSansSC-VF.ttf"
+        if not ttf_file.exists():
+            return
+
+        user_font_dir = Path.home() / ".local" / "share" / "fonts"
+        user_font_dir.mkdir(parents=True, exist_ok=True)
+        target = user_font_dir / "NotoSansSC-VF.ttf"
+
+        if not target.exists():
+            import shutil
+            shutil.copy2(str(ttf_file), str(target))
+            # 刷新系统字体缓存
+            import subprocess
+            subprocess.run(["fc-cache", "-f", str(user_font_dir)], capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
 def _get_builtin_font_face_css() -> str:
     """自动检测插件目录内置字体（如思源黑体 Noto Sans SC），生成 @font-face CSS。"""
+    _ensure_linux_font_installed()
     try:
         font_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
         if not font_dir.exists():
@@ -578,6 +607,8 @@ def render_markdown_to_image_sync(
             "--disable-dev-shm-usage",
             "--hide-scrollbars",
             "--allow-file-access-from-files",
+            "--disable-web-security",
+            "--allow-running-insecure-content",
             "--font-render-hinting=medium",
             "--enable-font-antialiasing",
             "--force-device-scale-factor=2",
