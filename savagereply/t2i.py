@@ -107,67 +107,84 @@ def find_browser_executable() -> str | None:
 
 
 def markdown_to_antigravity_html(text: str) -> str:
-    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式 HTML。"""
+    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式 HTML。
+
+    严格采纳从 Antigravity 宿主真实前端逆向提取的色彩、圆角与排版规范：
+    - 背景底色：--background (#F9F9F9)
+    - 正文字体：-apple-system / BlinkMacSystemFont / Segoe UI / PingFang SC
+    - 行内代码：--code (#a31515) + 浅灰透明底色 (rgba(0,0,0,0.05)) + 等宽字体
+    - 引用块：左侧 4px solid var(--border) + 浅灰底色 (var(--muted)) + 圆角包裹
+    - 表格：md-table-wrapper 圆角卡片包裹，消除边框重叠，表头 var(--secondary) 浅灰底
+    """
     try:
         from markdown_it import MarkdownIt
+
         md = MarkdownIt("commonmark").enable("table").enable("strikethrough")
         content_html = md.render(text)
     except Exception:
         # 降级：基础文本换行包装
         import html
+
         escaped = html.escape(text).replace("\n", "<br>")
         content_html = f"<p>{escaped}</p>"
+
+    # 1:1 原生 Antigravity 表格结构：自动包裹三层外层容器，实现圆角无溢出裁切与边框重叠消除
+    import re
+
+    content_html = re.sub(
+        r"(<table\b[^>]*>[\s\S]*?</table>)",
+        r'<div class="md-table-host"><div class="md-table-scroll"><div class="md-table-wrapper">\1</div></div></div>',
+        content_html,
+    )
 
     html_template = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <style>
+  :root {{
+    --background: #F9F9F9;
+    --foreground: #101010;
+    --secondary: #eaeaea;
+    --secondary-foreground: #686a70;
+    --muted: #f3f3f3;
+    --muted-foreground: #989a9e;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-solid: #e5e5e5;
+    --code: #a31515;
+    --code-bg: rgba(0, 0, 0, 0.05);
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+  }}
   * {{
     box-sizing: border-box;
     margin: 0;
     padding: 0;
   }}
   body {{
-    background-color: #f9f9f9;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
-    color: #111827;
-    padding: 28px 32px;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 14.5px;
+    line-height: 1.68;
+    padding: 24px 28px;
     width: 820px;
     -webkit-font-smoothing: antialiased;
-    font-size: 15px;
-    line-height: 1.7;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     word-break: break-word;
   }}
   h1, h2, h3, h4, h5, h6 {{
-    color: #0f172a;
-    font-weight: 700;
+    color: var(--foreground);
+    font-weight: 600;
     line-height: 1.4;
   }}
-  h1 {{
-    font-size: 22px;
-    margin-top: 20px;
-    margin-bottom: 14px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #e5e7eb;
-  }}
-  h1:first-child {{
+  h1 {{ font-size: 20px; margin: 18px 0 12px 0; }}
+  h2 {{ font-size: 18px; margin: 16px 0 10px 0; }}
+  h3 {{ font-size: 16px; margin: 14px 0 8px 0; }}
+  h4 {{ font-size: 15px; margin: 12px 0 6px 0; }}
+  h1:first-child, h2:first-child, h3:first-child, h4:first-child {{
     margin-top: 0;
-  }}
-  h2 {{
-    font-size: 18px;
-    margin-top: 18px;
-    margin-bottom: 10px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid #f3f4f6;
-  }}
-  h2:first-child {{
-    margin-top: 0;
-  }}
-  h3 {{
-    font-size: 16px;
-    margin-top: 16px;
-    margin-bottom: 10px;
   }}
   p {{
     margin-bottom: 12px;
@@ -176,90 +193,138 @@ def markdown_to_antigravity_html(text: str) -> str:
     margin-bottom: 0;
   }}
   strong, b {{
-    font-weight: 700;
-    color: #0f172a;
+    font-weight: 600;
+    color: var(--foreground);
   }}
   em, i {{
     font-style: italic;
     color: #374151;
   }}
-  /* 1:1 原生 Antigravity 标红样式：浅灰微温底色 + VS Code 经典暗红字体 + 无边框 */
+  /* 1:1 原生 Antigravity 标红样式：浅灰微温底色 + VS Code 经典深暗红字体 + 等宽字体 */
   code {{
-    font-family: Consolas, "SF Mono", Monaco, "Courier New", monospace;
-    font-size: 0.9em;
-    color: #a31515;
-    background-color: #efefef;
-    border-radius: 3px;
-    padding: 2px 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.88em;
+    color: var(--code);
+    background-color: var(--code-bg);
+    border-radius: 4px;
+    padding: 1.5px 5px;
     margin: 0 2px;
+    white-space: pre-wrap;
+    word-break: break-word;
     vertical-align: baseline;
   }}
-  /* 1:1 原生 Antigravity 引用框：纯浅灰无边线卡片，内衬透气 */
+  /* 1:1 原生 Antigravity 引用框：左侧 4px solid var(--border) + 浅灰卡片底色 */
   blockquote {{
-    margin: 14px 0;
-    padding: 14px 20px;
-    background-color: #f3f3f3;
-    border: none;
-    border-radius: 6px;
-    color: #111827;
-    font-size: 14.5px;
-    line-height: 1.65;
+    border-left: 4px solid #d1d5db;
+    background-color: var(--muted);
+    padding: 8px 16px;
+    margin: 10px 0;
+    border-radius: 0 6px 6px 0;
+    color: #374151;
+    font-size: 14px;
+    line-height: 1.6;
   }}
   blockquote p {{
-    margin-bottom: 6px;
+    margin: 4px 0;
+  }}
+  blockquote p:first-child {{
+    margin-top: 0;
   }}
   blockquote p:last-child {{
     margin-bottom: 0;
   }}
   ul, ol {{
-    padding-left: 24px;
-    margin: 10px 0 14px 0;
+    padding-left: 22px;
+    margin: 8px 0 12px 0;
   }}
   li {{
-    margin-bottom: 6px;
-    line-height: 1.7;
-  }}
-  table {{
-    width: 100%;
-    border-collapse: collapse;
-    margin: 16px 0;
-    font-size: 14px;
-  }}
-  th, td {{
-    border: 1px solid #e5e7eb;
-    padding: 9px 13px;
-    text-align: left;
-  }}
-  th {{
-    background-color: #f3f4f6;
-    font-weight: 600;
+    margin-bottom: 5px;
+    line-height: 1.68;
     color: #1f2937;
   }}
-  tr:nth-child(even) {{
-    background-color: #fafafa;
+  li > ul, li > ol {{
+    margin: 4px 0;
   }}
-  pre {{
-    background: #1e1e2e;
-    color: #cdd6f4;
-    border-radius: 6px;
-    padding: 14px 18px;
-    overflow-x: auto;
-    font-family: Consolas, "SF Mono", monospace;
-    font-size: 13.5px;
-    line-height: 1.6;
+  /* 1:1 原生 Antigravity Markdown 表格规范：圆角容器 + 消除双边框 + 柔和表头 */
+  .md-table-host {{
     margin: 14px 0;
+    position: relative;
+  }}
+  .md-table-scroll {{
+    width: 100%;
+    overflow-x: auto;
+  }}
+  .md-table-wrapper {{
+    position: relative;
+    width: 100%;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  }}
+  .md-table-wrapper table {{
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13.5px;
+    background-color: #ffffff;
+  }}
+  .md-table-wrapper th {{
+    background-color: var(--secondary);
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.375;
+    border: 1px solid var(--border);
+    color: var(--foreground);
+  }}
+  .md-table-wrapper td {{
+    padding: 8px 12px;
+    line-height: 1.5;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    color: #1a1a1a;
+    background-color: #ffffff;
+  }}
+  /* 官方消除外侧重叠边框 */
+  .md-table-wrapper thead tr:first-child th {{
+    border-top: 0;
+  }}
+  .md-table-wrapper tbody tr:last-child td {{
+    border-bottom: 0;
+  }}
+  .md-table-wrapper th:first-child,
+  .md-table-wrapper td:first-child {{
+    border-left: 0;
+  }}
+  .md-table-wrapper th:last-child,
+  .md-table-wrapper td:last-child {{
+    border-right: 0;
+  }}
+  /* 代码块 */
+  pre {{
+    background-color: #1e1e2e;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 12px 16px;
+    margin: 12px 0;
+    overflow-x: auto;
   }}
   pre code {{
-    color: inherit;
-    background: transparent;
-    border: none;
+    color: #cdd6f4;
+    background-color: transparent;
     padding: 0;
     margin: 0;
+    border-radius: 0;
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre;
   }}
   hr {{
     border: none;
-    border-top: 1px solid #e5e7eb;
-    margin: 20px 0;
+    border-top: 1px solid var(--border);
+    margin: 18px 0;
   }}
 </style>
 </head>
@@ -310,6 +375,8 @@ def render_markdown_to_image_sync(
         output_path = str(out_file.resolve())
 
     try:
+        # 根据文本长度动态估算视口高度，确保超长表格或长篇数据报告不被视口截断
+        est_height = max(2000, min(8000, int(len(text) * 3.8) + 1200))
         cmd = [
             browser,
             "--headless=new",
@@ -318,7 +385,7 @@ def render_markdown_to_image_sync(
             "--disable-dev-shm-usage",
             "--hide-scrollbars",
             "--force-device-scale-factor=2",
-            "--window-size=820,1500",
+            f"--window-size=820,{est_height}",
             f"--screenshot={tmp_shot}",
             Path(tmp_html_path).resolve().as_uri(),
         ]

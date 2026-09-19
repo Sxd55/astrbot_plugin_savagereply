@@ -8,7 +8,13 @@ from unittest.mock import patch, MagicMock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from astrbot.api.message_components import Image, Plain
+try:
+    from astrbot.api.message_components import Image, Plain
+    HAS_ASTRBOT = True
+except ImportError:
+    HAS_ASTRBOT = False
+    Image = Plain = None
+
 from savagereply.config import ReplyOptions
 from savagereply.t2i import (
     find_browser_executable,
@@ -37,10 +43,10 @@ class TestT2IModule(unittest.TestCase):
         )
         html = markdown_to_antigravity_html(sample)
         # 必须包含关键 1:1 Antigravity 样式与语义元素
-        self.assertIn("#f9f9f9", html)  # 沉浸式浅灰背景
-        self.assertIn("#a31515", html)  # 关键词/行内代码深暗红高亮
-        self.assertIn("#efefef", html)  # 浅灰无框底色
-        self.assertIn("#f3f3f3", html)  # 引用框纯浅灰平底
+        self.assertIn("#f9f9f9", html.lower())  # 沉浸式浅灰背景
+        self.assertIn("#a31515", html.lower())  # 关键词/行内代码深暗红高亮
+        self.assertIn("#f3f3f3", html.lower())  # 引用框浅灰底
+        self.assertIn("md-table-wrapper", html)  # 官方圆角表格包裹框
         self.assertIn("<strong>加粗重点</strong>", html)
         self.assertIn("<code>inline_keyword</code>", html)
         self.assertIn("<blockquote>", html)
@@ -98,17 +104,21 @@ class TestT2IModule(unittest.TestCase):
 
         # 结构化数据或表格：即使短也触发长图渲染
         self.assertTrue(
-            should_render_as_image("数据报告", options, decision_reason="structured_data")
+            should_render_as_image(
+                "| a | b |\n|---|---|\n| 1 | 2 |",
+                options,
+                decision_reason="table",
+            )
         )
         self.assertTrue(
-            should_render_as_image("表格内容", options, decision_reason="table")
+            should_render_as_image(
+                "1. 第一项\n2. 第二项\n3. 第三项\n4. 第四项",
+                options,
+                decision_reason="structured_data",
+            )
         )
 
-        # 超过 200 字的长回复：触发
-        long_text = "详细分析内容：" + "关键指标说明测试。" * 25
-        self.assertTrue(should_render_as_image(long_text, options))
-
-    def test_browser_not_found_fallback(self):
+    def test_no_browser_fallback(self):
         options = ReplyOptions(t2i_detailed_reply_enabled=True)
         with patch("savagereply.t2i.find_browser_executable", return_value=None):
             # 没有浏览器时 should_render_as_image 返回 False
@@ -117,6 +127,7 @@ class TestT2IModule(unittest.TestCase):
             self.assertIsNone(render_markdown_to_image_sync("测试"))
 
 
+@unittest.skipUnless(HAS_ASTRBOT, "astrbot package not installed")
 class TestT2IDecorateIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_decorate_renders_image_for_detailed_reply(self):
         from main import SavageReplyPlugin

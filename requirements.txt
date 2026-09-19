@@ -1,0 +1,4 @@
+# Savage's Reply 插件依赖
+# AstrBot 安装插件时会自动通过 pip 安装以下依赖
+markdown-it-py>=3.0.0
+Pillow>=9.0.0
