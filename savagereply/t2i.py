@@ -1,13 +1,12 @@
 """详细输出转高质感卡片长图 (T2I: Text-to-Image)。
 
-复刻 Antigravity 现代排版视觉规范：
-- 现代无衬线字体栈与舒适行高
-- 标题层级分明与粗体加厚
-- 行内代码/关键参数浅粉底色+暗红高亮 (#c7254e)
-- 引用块左侧边条与灰色背景
-- 斑马纹精致数据表格
-- 深色现代代码块
-- 卡片圆角、柔和外衬、微投影与精致页脚
+100% 像素级复刻 Antigravity 沉浸式原生排版规范：
+- 沉浸式微暖浅灰背景 (#f9f9f9)，无多余外部浮动框与阴影，自然利落
+- 现代字体栈，正文深黑 (#111827)，行高舒适，字重对比鲜明 (700 加厚)
+- 行内代码/关键参数原汁原味代码高亮：浅灰微温底色 (#efefef) + VS Code 经典深暗红高亮 (#a31515)，无突兀边框
+- 引用块：纯浅灰平底圆角框 (#f3f3f3)，无左侧边条竖线，内衬透气舒适
+- 斑马纹现代数据表格与深色代码块
+- 高清 2x Retina 采样与自适应无损纵向裁切
 
 系统依赖：
 优先调用系统自带的 Chromium 内核无头浏览器（Windows Edge / Google Chrome 等），
@@ -23,7 +22,7 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .config import ReplyOptions
@@ -91,7 +90,7 @@ def find_browser_executable() -> str | None:
 
 
 def markdown_to_antigravity_html(text: str) -> str:
-    """将 Markdown 文本转换为具有 Antigravity 视觉风格的高清卡片 HTML。"""
+    """将 Markdown 文本转换为 1:1 像素级原汁原味 Antigravity 沉浸式 HTML。"""
     try:
         from markdown_it import MarkdownIt
         md = MarkdownIt("commonmark").enable("table").enable("strikethrough")
@@ -113,31 +112,19 @@ def markdown_to_antigravity_html(text: str) -> str:
     padding: 0;
   }}
   body {{
-    background-color: #f1f5f9;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    color: #1e293b;
-    padding: 24px;
-    display: flex;
-    justify-content: center;
+    background-color: #f9f9f9;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #111827;
+    padding: 28px 32px;
+    width: 820px;
     -webkit-font-smoothing: antialiased;
-  }}
-  .card {{
-    background: #ffffff;
-    width: 760px;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
-    border: 1px solid #e2e8f0;
-    overflow: hidden;
-  }}
-  .card-body {{
-    padding: 32px 36px;
     font-size: 15px;
-    line-height: 1.75;
+    line-height: 1.7;
     word-break: break-word;
   }}
   h1, h2, h3, h4, h5, h6 {{
     color: #0f172a;
-    font-weight: 650;
+    font-weight: 700;
     line-height: 1.4;
   }}
   h1 {{
@@ -145,7 +132,7 @@ def markdown_to_antigravity_html(text: str) -> str:
     margin-top: 20px;
     margin-bottom: 14px;
     padding-bottom: 8px;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e5e7eb;
   }}
   h1:first-child {{
     margin-top: 0;
@@ -155,15 +142,15 @@ def markdown_to_antigravity_html(text: str) -> str:
     margin-top: 18px;
     margin-bottom: 10px;
     padding-bottom: 6px;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #f3f4f6;
   }}
   h2:first-child {{
     margin-top: 0;
   }}
   h3 {{
     font-size: 16px;
-    margin-top: 14px;
-    margin-bottom: 8px;
+    margin-top: 16px;
+    margin-bottom: 10px;
   }}
   p {{
     margin-bottom: 12px;
@@ -172,33 +159,34 @@ def markdown_to_antigravity_html(text: str) -> str:
     margin-bottom: 0;
   }}
   strong, b {{
-    font-weight: 650;
+    font-weight: 700;
     color: #0f172a;
   }}
   em, i {{
     font-style: italic;
-    color: #334155;
+    color: #374151;
   }}
-  /* 关键词/行内代码粉底标红样式 - 100% 像素级复刻 Antigravity 视觉 */
+  /* 1:1 原生 Antigravity 标红样式：浅灰微温底色 + VS Code 经典暗红字体 + 无边框 */
   code {{
-    font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+    font-family: Consolas, "SF Mono", Monaco, "Courier New", monospace;
     font-size: 0.9em;
-    color: #c7254e;
-    background-color: #fbf0f2;
-    border: 1px solid rgba(199, 37, 78, 0.12);
-    border-radius: 4px;
-    padding: 2px 6px;
+    color: #a31515;
+    background-color: #efefef;
+    border-radius: 3px;
+    padding: 2px 5px;
     margin: 0 2px;
     vertical-align: baseline;
   }}
+  /* 1:1 原生 Antigravity 引用框：纯浅灰无边线卡片，内衬透气 */
   blockquote {{
     margin: 14px 0;
-    padding: 12px 18px;
-    background: #f8fafc;
-    border-left: 4px solid #94a3b8;
-    border-radius: 0 6px 6px 0;
-    color: #475569;
+    padding: 14px 20px;
+    background-color: #f3f3f3;
+    border: none;
+    border-radius: 6px;
+    color: #111827;
     font-size: 14.5px;
+    line-height: 1.65;
   }}
   blockquote p {{
     margin-bottom: 6px;
@@ -207,15 +195,12 @@ def markdown_to_antigravity_html(text: str) -> str:
     margin-bottom: 0;
   }}
   ul, ol {{
-    padding-left: 22px;
+    padding-left: 24px;
     margin: 10px 0 14px 0;
   }}
   li {{
     margin-bottom: 6px;
     line-height: 1.7;
-  }}
-  li::marker {{
-    color: #64748b;
   }}
   table {{
     width: 100%;
@@ -224,25 +209,25 @@ def markdown_to_antigravity_html(text: str) -> str:
     font-size: 14px;
   }}
   th, td {{
-    border: 1px solid #e2e8f0;
+    border: 1px solid #e5e7eb;
     padding: 9px 13px;
     text-align: left;
   }}
   th {{
-    background-color: #f8fafc;
+    background-color: #f3f4f6;
     font-weight: 600;
-    color: #334155;
+    color: #1f2937;
   }}
   tr:nth-child(even) {{
-    background-color: #fbfcfe;
+    background-color: #fafafa;
   }}
   pre {{
     background: #1e1e2e;
     color: #cdd6f4;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 14px 18px;
     overflow-x: auto;
-    font-family: "JetBrains Mono", Consolas, monospace;
+    font-family: Consolas, "SF Mono", monospace;
     font-size: 13.5px;
     line-height: 1.6;
     margin: 14px 0;
@@ -256,34 +241,14 @@ def markdown_to_antigravity_html(text: str) -> str:
   }}
   hr {{
     border: none;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid #e5e7eb;
     margin: 20px 0;
-  }}
-  .card-footer {{
-    background: #fafafa;
-    border-top: 1px solid #f1f5f9;
-    padding: 10px 36px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-    color: #94a3b8;
-  }}
-  .card-footer .tag {{
-    font-weight: 500;
-    color: #64748b;
   }}
 </style>
 </head>
 <body>
-  <div class="card" id="render-target">
-    <div class="card-body">
-      {content_html}
-    </div>
-    <div class="card-footer">
-      <span class="tag">✨ Savage's Reply</span>
-      <span>Antigravity Card Engine</span>
-    </div>
+  <div id="content">
+    {content_html}
   </div>
 </body>
 </html>
@@ -332,7 +297,7 @@ def render_markdown_to_image_sync(
             "--disable-gpu",
             "--no-sandbox",
             "--force-device-scale-factor=2",
-            "--window-size=820,1200",
+            "--window-size=820,1500",
             f"--screenshot={tmp_shot}",
             f"file:///{Path(tmp_html_path).as_posix()}",
         ]
@@ -345,17 +310,14 @@ def render_markdown_to_image_sync(
             return None
 
         with Image.open(tmp_shot) as im:
-            # 找到卡片边界（根据外层背景色 RGB (241, 245, 249) 切除多余空白）
-            bg = Image.new(im.mode, im.size, (241, 245, 249))
+            # 根据沉浸式背景色 RGB (249, 249, 249) 切除视口底部多余留白
+            bg = Image.new(im.mode, im.size, (249, 249, 249))
             diff = ImageChops.difference(im, bg)
             bbox = diff.getbbox()
             if bbox:
-                pad = 16 * 2  # 2x Retina 采样下四周保留外边距
-                left = max(0, bbox[0] - pad)
-                top = max(0, bbox[1] - pad)
-                right = min(im.width, bbox[2] + pad)
-                bottom = min(im.height, bbox[3] + pad)
-                cropped = im.crop((left, top, right, bottom))
+                pad_v = 28 * 2  # 2x Retina 采样下底部保留舒适内边距
+                bottom = min(im.height, bbox[3] + pad_v)
+                cropped = im.crop((0, 0, im.width, bottom))
                 cropped.save(output_path, "PNG")
             else:
                 im.save(output_path, "PNG")

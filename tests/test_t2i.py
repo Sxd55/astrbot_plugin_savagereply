@@ -36,15 +36,15 @@ class TestT2IModule(unittest.TestCase):
             "| 数据A | 数据B |\n"
         )
         html = markdown_to_antigravity_html(sample)
-        # 必须包含关键 Antigravity 样式与语义元素
-        self.assertIn("card", html)
-        self.assertIn("#c7254e", html)  # 关键词/行内代码粉底标红
-        self.assertIn("#fbf0f2", html)
+        # 必须包含关键 1:1 Antigravity 样式与语义元素
+        self.assertIn("#f9f9f9", html)  # 沉浸式浅灰背景
+        self.assertIn("#a31515", html)  # 关键词/行内代码深暗红高亮
+        self.assertIn("#efefef", html)  # 浅灰无框底色
+        self.assertIn("#f3f3f3", html)  # 引用框纯浅灰平底
         self.assertIn("<strong>加粗重点</strong>", html)
         self.assertIn("<code>inline_keyword</code>", html)
         self.assertIn("<blockquote>", html)
         self.assertIn("<table>", html)
-        self.assertIn("✨ Savage's Reply", html)
 
     def test_render_markdown_to_image_sync(self):
         text = (
