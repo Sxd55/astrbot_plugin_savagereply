@@ -81,6 +81,24 @@ class TestT2IModule(unittest.TestCase):
         quad_md = "重点****解析"
         self.assertIn("** **", clean_markdown_for_rendering(quad_md))
 
+        # 专项测试：表格规范化（带缩进、紧贴序号、内部带加粗、后续接列表项）
+        table_md = (
+            "3. 性价比（核心疑点）：\n"
+            "    | 档位 | 月费 | 杠杆 |\n"
+            "    |---|---|---|\n"
+            "    | Pro | $5 | **30×** |\n"
+            "    | Max | $20 | **30×** |\n"
+            "    • 账面漂亮得离谱：所有档位都是整齐的 30 倍\n"
+        )
+        t_cleaned = clean_markdown_for_rendering(table_md)
+        # 表格前后必须有空行，且各行必须顶格对齐
+        self.assertIn("\n\n| 档位 | 月费 | 杠杆 |\n|---|---|---|\n| Pro | $5 | **30×** |\n| Max | $20 | **30×** |\n\n", t_cleaned)
+        # 完整 HTML 渲染必须生成标准 table 和 md-table-wrapper
+        t_html = markdown_to_antigravity_html(table_md)
+        self.assertIn("<table", t_html)
+        self.assertIn("md-table-wrapper", t_html)
+        self.assertNotIn("<pre><code>", t_html)
+
     def test_render_markdown_to_image_sync(self):
         text = (
             "## 核心特性评估报告\n\n"

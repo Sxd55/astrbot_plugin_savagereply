@@ -122,14 +122,53 @@ def clean_markdown_for_rendering(text: str) -> str:
 
     import re
 
-    # 0. 智能层级规范化与导引词加粗：
-    # 0.1 次级列表智能缩进对齐：编号项后面的 - 或 • 自动缩进 4 格
-    # 0.2 列表导引词自动加粗：当列表项（如 - 闲聊直接回：）冒号前的短语未加粗时，自动赋予 **加粗**，100% 呈现 Antigravity 黑白对比架构感
+    # 0. 健壮表格块规范化：
+    # 彻底解决 LLM 生成表格时带空格缩进、紧贴上下段落无空行，或因正则误匹配导致表格行间被强插空行断裂的灾难
+    lines = text.split("\n")
+    table_normalized = []
+    table_buf = []
+
+    def flush_table():
+        nonlocal table_buf
+        if not table_buf:
+            return
+        # 检验是否构成有效表格（至少包含表头与 | --- | 分隔行两行）
+        if len(table_buf) >= 2 and re.match(r"^\|(?:\s*:?-+:?\s*\|)+$", table_buf[1]):
+            # 是合法表格：确保上方有且仅有一个空行隔开
+            if table_normalized and table_normalized[-1].strip():
+                table_normalized.append("")
+            # 表格内部紧密连接，顶格对齐
+            table_normalized.extend(table_buf)
+            # 表格下方确保有且仅有一个空行隔开
+            table_normalized.append("")
+        else:
+            table_normalized.extend(table_buf)
+        table_buf = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2:
+            table_buf.append(stripped)
+        else:
+            flush_table()
+            table_normalized.append(line)
+    flush_table()
+    text = "\n".join(table_normalized)
+
+    # 1. 智能层级规范化与导引词加粗：
+    # 1.1 次级列表智能缩进对齐：编号项后面的 - 或 • 自动缩进 4 格
+    # 1.2 列表导引词自动加粗：当列表项（如 - 闲聊直接回：）冒号前的短语未加粗时，自动赋予 **加粗**，100% 呈现 Antigravity 黑白对比架构感
     lines = text.split("\n")
     sublist_processed = []
     in_num_item = False
     for line in lines:
         stripped = line.strip()
+        # 表格行隔离：表格属于独立块级元素，表格内部及其后重置 in_num_item，避免后续列表项被误判定为缩进代码块
+        if stripped.startswith("|") and stripped.endswith("|"):
+            in_num_item = False
+            sublist_processed.append(line)
+            continue
+
         # 匹配一级编号小项：如 "1. 意图判定："
         num_m = re.match(r"^(\d+\.\s+)(?!\*\*)([^\n:*`]{2,14})([:：])(.*)$", stripped)
         if num_m:
@@ -166,7 +205,7 @@ def clean_markdown_for_rendering(text: str) -> str:
         sublist_processed.append(line)
     text = "\n".join(sublist_processed)
 
-    # 1. 占位保护已有语法结构（围栏代码块必须最先保护）
+    # 2. 占位保护已有语法结构（围栏代码块必须最先保护）
     placeholders = []
 
     def save_placeholder(m):
@@ -177,7 +216,7 @@ def clean_markdown_for_rendering(text: str) -> str:
     # 保护围栏代码块
     text = re.sub(r"```[\s\S]*?```", save_placeholder, text)
 
-    # 2. 严格按成对反引号解析行内代码，仅对真正滥用反引号的纯中文长句（>=5汉字）优雅降级为加粗
+    # 3. 严格按成对反引号解析行内代码，仅对真正滥用反引号的纯中文长句（>=5汉字）优雅降级为加粗
     # 彻底杜绝全局正则跨代码块配对（将闭合反引号与下一起始反引号误判为一对）的灾难
     lines = text.split("\n")
     processed_lines = []
@@ -200,10 +239,6 @@ def clean_markdown_for_rendering(text: str) -> str:
         else:
             processed_lines.append(line)
     text = "\n".join(processed_lines)
-
-    # 3. 规范表格前后的空行，避免 CommonMark 将紧跟段落的表格误判为普通文本
-    text = re.sub(r"([^\n])\n(\|[^\n]+\|\s*\n\|[-: |]+\|)", r"\1\n\n\2", text)
-    text = re.sub(r"(\|[^\n]+\|\s*)\n([^\n|])", r"\1\n\n\2", text)
 
     # 4. 占位保护已有的合法行内反引号、表格线、链接与 HTML
     protected = re.sub(r"`[^`\n]+`", save_placeholder, text)
