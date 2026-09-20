@@ -2,7 +2,7 @@ name: astrbot_plugin_savagereply
 display_name: "Savage's Reply"
 short_desc: 真人群聊交互中枢：免@智能接话、冷场打破、打字延迟与智能分段连发。
 desc: 真人群聊交互与表达中枢。打通“何时回（智能搭话/冷场打破/防插嘴）”与“怎么回（分段连发/打字节奏/TTS联动）”，让 Bot 如真人般自然灵动地融入群聊；同时保护代码块、表格、公式和超长正文，完整性优先。
-version: v0.8.0
+version: v0.8.1
 author: Sxd55
 repo: https://github.com/Sxd55/astrbot_plugin_savagereply
 logo: logo.png
