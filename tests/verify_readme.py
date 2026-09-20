@@ -85,7 +85,7 @@ pairs = [
     ("short_tail_chars", "8"), ("delay_base_seconds", "0.4"),
     ("delay_per_char_seconds", "0.08"), ("delay_punct_bonus_seconds", "0.25"),
     ("delay_jitter", "0.2"), ("delay_max_seconds", "4.0"),
-    ("delay_total_max_seconds", "10.0"),
+    ("delay_total_max_seconds", "10.0"), ("t2i_min_chars", "150"),
 ]
 for key, expect in pairs:
     actual = str(SCHEMA[key]["default"])

@@ -133,34 +133,36 @@ class TestT2IModule(unittest.TestCase):
             pass
 
     def test_should_render_as_image_conditions(self):
-        options = ReplyOptions(
-            t2i_detailed_reply_enabled=True,
-            t2i_min_chars=200,
-        )
-        # 短闲聊文本：不触发
-        self.assertFalse(should_render_as_image("你好呀，今天天气真不错！", options))
+        default_options = ReplyOptions()
+        self.assertEqual(default_options.t2i_min_chars, 150)
 
-        # 开关关闭：即使很长也不触发
-        disabled_options = ReplyOptions(
-            t2i_detailed_reply_enabled=False,
-            t2i_min_chars=200,
-        )
+        # 短闲聊文本（< 150 字，无关键词）：不触发
+        self.assertFalse(should_render_as_image("你好呀，今天天气真不错！", default_options))
+        self.assertFalse(should_render_as_image("这是一段普通的回答，字数没有达到一百五十个字。" * 3, default_options))
+
+        # 大于等于 150 字的纯文本（没有任何关键词/无特殊 reason）：默认直接触发长图
+        long_plain_text = "这是一段详细的技术分析与问题解答说明文本。" * 8  # 168 字
+        self.assertGreaterEqual(len(long_plain_text), 150)
+        self.assertTrue(should_render_as_image(long_plain_text, default_options))
+
+        # 开关关闭：即使字数超标也不触发
+        disabled_options = ReplyOptions(t2i_detailed_reply_enabled=False)
         self.assertFalse(
-            should_render_as_image("很长的一段文字" * 50, disabled_options)
+            should_render_as_image(long_plain_text, disabled_options)
         )
 
-        # 结构化数据或表格：即使短也触发长图渲染
+        # 结构化数据或表格：即使短于 150 字也触发长图渲染
         self.assertTrue(
             should_render_as_image(
                 "| a | b |\n|---|---|\n| 1 | 2 |",
-                options,
+                default_options,
                 decision_reason="table",
             )
         )
         self.assertTrue(
             should_render_as_image(
                 "1. 第一项\n2. 第二项\n3. 第三项\n4. 第四项",
-                options,
+                default_options,
                 decision_reason="structured_data",
             )
         )

@@ -810,13 +810,19 @@ def should_render_as_image(
     options: ReplyOptions,
     decision_reason: str = "",
 ) -> bool:
-    """判断当前回复是否属于详细输出，应当走图片长图回复。"""
+    """判断当前回复是否属于详细输出，应当走图片长图回复。
+
+    判定规则（满足任意一条且系统已安装 Chromium 浏览器）：
+    1. 纯文本字数达到门槛（默认 >= 150 字，长文默认无条件走长图，无需特殊关键词）；
+    2. 回复包含 Markdown 表格 (decision_reason == 'table') 或结构化数据 (decision_reason == 'structured_data')。
+    """
     global _WARNED_NO_BROWSER
     if not getattr(options, "t2i_detailed_reply_enabled", True):
         return False
 
-    is_detailed = (decision_reason in {"structured_data", "table"}) or (
-        len(text.strip()) >= getattr(options, "t2i_min_chars", 200)
+    min_chars = getattr(options, "t2i_min_chars", 150)
+    is_detailed = (len(text.strip()) >= min_chars) or (
+        decision_reason in {"structured_data", "table"}
     )
     if not is_detailed:
         return False
