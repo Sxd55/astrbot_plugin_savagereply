@@ -29,6 +29,7 @@ EXCLUDE_DIRS = {
     ".pytest_cache",
     ".idea",
     ".vscode",
+    "data",
     "t2i_cache",
     "node_modules",
 }

@@ -625,14 +625,54 @@ def markdown_to_antigravity_html(text: str) -> str:
     return html_template
 
 
-def _get_image_cache_dir() -> Path:
-    # 优先使用插件内部数据目录或家目录，避免 Linux Snap / AppArmor 对 /tmp 的沙箱隔离
-    base_dir = Path(__file__).resolve().parent.parent / "data" / "t2i_cache"
+PLUGIN_NAME = "astrbot_plugin_savagereply"
+
+
+def _cleanup_old_cache(cache_dir: Path, max_age_seconds: int = 86400) -> None:
+    """定期清理持久化数据目录中超过 24 小时的旧渲染长图，防止磁盘无限膨胀。"""
     try:
-        base_dir.mkdir(parents=True, exist_ok=True)
-        return base_dir
+        import time
+
+        now = time.time()
+        for f in cache_dir.glob("card_*.png"):
+            try:
+                if now - f.stat().st_mtime > max_age_seconds:
+                    f.unlink(missing_ok=True)
+            except OSError:
+                pass
     except Exception:
-        fallback = Path.home() / ".astrbot_t2i_cache"
+        pass
+
+
+def _get_image_cache_dir() -> Path:
+    """获取渲染长图的持久化缓存目录。
+
+    遵循 AstrBot 官方插件数据持久化规范：
+    渲染长图属于持久化插件数据，严格保存至 `data/plugin_data/astrbot_plugin_savagereply/` 下。
+    严禁将数据写入插件安装目录 `<plugin>/data` 或用户家目录。
+    """
+    try:
+        from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
+
+        root = Path(get_astrbot_plugin_data_path())
+    except Exception:
+        try:
+            from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+
+            root = Path(get_astrbot_data_path()) / "plugin_data"
+        except Exception:
+            root = Path("data") / "plugin_data"
+
+    target_dir = root / PLUGIN_NAME
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        _cleanup_old_cache(target_dir)
+        return target_dir
+    except Exception:
+        # 在极端无写入权限环境下安全兜底至系统临时目录
+        import tempfile
+
+        fallback = Path(tempfile.gettempdir()) / "astrbot_plugin_data" / PLUGIN_NAME
         fallback.mkdir(parents=True, exist_ok=True)
         return fallback
 

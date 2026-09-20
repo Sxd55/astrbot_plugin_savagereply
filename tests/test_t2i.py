@@ -173,6 +173,16 @@ class TestT2IModule(unittest.TestCase):
             # 同步渲染直接返回 None
             self.assertIsNone(render_markdown_to_image_sync("测试"))
 
+    def test_image_cache_dir_compliance(self):
+        from savagereply.t2i import _get_image_cache_dir
+        cache_dir = _get_image_cache_dir()
+        self.assertIsNotNone(cache_dir)
+        # 必须严格属于 plugin_data 规范路径，杜绝插件源码内 data 或家目录
+        dir_str = str(cache_dir).replace("\\", "/")
+        self.assertTrue(dir_str.endswith("plugin_data/astrbot_plugin_savagereply"))
+        self.assertNotIn("astrbot_plugin_savagereply/data/t2i_cache", dir_str)
+        self.assertNotIn(".astrbot_t2i_cache", dir_str)
+
 
 @unittest.skipUnless(HAS_ASTRBOT, "astrbot package not installed")
 class TestT2IDecorateIntegration(unittest.IsolatedAsyncioTestCase):
