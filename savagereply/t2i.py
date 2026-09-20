@@ -389,7 +389,7 @@ def markdown_to_antigravity_html(text: str) -> str:
 {builtin_font_css}
   :root {{
     --bg-page: #ffffff;
-    --text-primary: #1f2328;
+    --text-primary: #101010;
     --text-secondary: #475569;
     --text-muted: #6b7280;
     --border: #e1e4e8;
@@ -405,11 +405,11 @@ def markdown_to_antigravity_html(text: str) -> str:
   body {{
     background-color: var(--bg-page);
     padding: 24px 28px;
-    width: 800px;
-    font-family: 'AntigravitySans', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
-    font-size: 14.2px;
-    font-weight: 450;
-    line-height: 1.68;
+    width: 780px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", 'AntigravitySans', sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.625;
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -424,8 +424,8 @@ def markdown_to_antigravity_html(text: str) -> str:
     word-break: break-word;
   }}
   h1, h2, h3, h4, h5, h6 {{
-    color: #111827;
-    font-weight: 700;
+    color: #101010;
+    font-weight: 600;
     line-height: 1.4;
     margin-top: 18px;
     margin-bottom: 8px;
@@ -436,7 +436,7 @@ def markdown_to_antigravity_html(text: str) -> str:
   h1 {{ font-size: 19px; }}
   h2 {{ font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }}
   h3 {{ font-size: 15.5px; }}
-  h4 {{ font-size: 14.2px; color: #1e293b; }}
+  h4 {{ font-size: 14px; color: #101010; }}
   p {{
     margin-bottom: 10px;
   }}
@@ -444,8 +444,8 @@ def markdown_to_antigravity_html(text: str) -> str:
     margin-bottom: 0;
   }}
   strong, b {{
-    font-weight: 700;
-    color: #111827;
+    font-weight: 600;
+    color: #101010;
   }}
   em, i {{
     font-style: italic;
