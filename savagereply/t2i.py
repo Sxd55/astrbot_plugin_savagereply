@@ -262,9 +262,9 @@ def clean_markdown_for_rendering(text: str) -> str:
     protected = re.sub(r"(`)\*\*([^\s*])", r"\1 **\2", protected)
     protected = re.sub(r"([^\s*])\*\*(`)", r"\1** \2", protected)
     # 5.3 修复星号内侧的多余空格（CommonMark 规范禁止星号内侧有空格）：** text ** -> **text**
-    protected = re.sub(r"\*\*\s+([^\*\n]+?)\s+\*\*", r"**\1**", protected)
-    protected = re.sub(r"\*\*\s+([^\*\n]+?)\*\*", r"**\1**", protected)
-    protected = re.sub(r"\*\*([^\*\n]+?)\s+\*\*", r"**\1**", protected)
+    protected = re.sub(r"\*\*[ \t]+([^\*\n]+?)[ \t]+\*\*", r"**\1**", protected)
+    protected = re.sub(r"\*\*[ \t]+([^\*\n]+?)\*\*", r"**\1**", protected)
+    protected = re.sub(r"\*\*([^\*\n]+?)[ \t]+\*\*", r"**\1**", protected)
 
     # 6. 折叠超过 3 行以上的连续空行，保持排版呼吸感
     cleaned = re.sub(r"\n{3,}", "\n\n", protected.strip())
