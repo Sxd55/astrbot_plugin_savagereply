@@ -812,18 +812,42 @@ def should_render_as_image(
 ) -> bool:
     """判断当前回复是否属于详细输出，应当走图片长图回复。
 
-    判定规则（满足任意一条且系统已安装 Chromium 浏览器）：
-    1. 纯文本字数达到门槛（默认 >= 150 字，长文默认无条件走长图，无需特殊关键词）；
-    2. 回复包含 Markdown 表格 (decision_reason == 'table') 或结构化数据 (decision_reason == 'structured_data')。
+    判定规则（满足条件且系统已安装 Chromium 浏览器）：
+    1. 总开关关闭或模式为 'never'：从不转长图；
+    2. 'always' 模式（图文精装）：字数 >= t2i_min_chars 或含 Markdown 结构即转长图；
+    3. 'auto' 模式（智能自适应，默认推荐）：
+       - 若包含实质 Markdown 结构（表格/代码块/列表/标题/引用等）：字数达到轻量结构门槛 (>= 60 字) 或包含表格/代码块即转长图；
+       - 若为纯口语自然语言（无上述排版结构）：优先拟人分段打字，只有达到超长篇大论 (>= t2i_plain_min_chars，默认 350 字) 才转长图，绝不破坏长闲聊的真实感。
     """
     global _WARNED_NO_BROWSER
     if not getattr(options, "t2i_detailed_reply_enabled", True):
         return False
 
-    min_chars = getattr(options, "t2i_min_chars", 150)
-    is_detailed = (len(text.strip()) >= min_chars) or (
-        decision_reason in {"structured_data", "table"}
-    )
+    mode = str(getattr(options, "t2i_mode", "auto") or "auto").strip().lower()
+    if mode == "never":
+        return False
+
+    clean_content = (text or "").strip()
+    char_len = len(clean_content)
+    if char_len == 0:
+        return False
+
+    from .policy import has_markdown_structure
+
+    has_struct = (decision_reason in {"structured_data", "table"}) or has_markdown_structure(clean_content)
+
+    if mode == "always":
+        min_chars = getattr(options, "t2i_min_chars", 150)
+        is_detailed = has_struct or (char_len >= min_chars)
+    else:  # auto 智能自适应
+        if has_struct:
+            # 包含表格、代码块等直接转图；其他列表/标题/引用等排版只要达到 30 字即转图，消灭客户端裸露源码
+            is_detailed = (decision_reason in {"table", "structured_data"}) or ("```" in clean_content) or (char_len >= 30)
+        else:
+            # 纯自然语言：优先打字机分段，除非是超长篇大论（默认 350 字）
+            plain_threshold = getattr(options, "t2i_plain_min_chars", 350)
+            is_detailed = char_len >= plain_threshold
+
     if not is_detailed:
         return False
 

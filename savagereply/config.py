@@ -126,7 +126,9 @@ class ReplyOptions:
     active_reply_quiet_hours: str = "23:00-07:00"
     active_reply_groups: list[str] = field(default_factory=list)
     t2i_detailed_reply_enabled: bool = True
+    t2i_mode: str = "auto"
     t2i_min_chars: int = 150
+    t2i_plain_min_chars: int = 350
 
     @classmethod
     def from_config(cls, raw: Any) -> ReplyOptions:
@@ -195,7 +197,9 @@ class ReplyOptions:
             active_reply_quiet_hours=_as_str(data.get("active_reply_quiet_hours"), "23:00-07:00"),
             active_reply_groups=_as_str_list(data.get("active_reply_groups"), []),
             t2i_detailed_reply_enabled=_as_bool(data.get("t2i_detailed_reply_enabled"), True),
+            t2i_mode=_as_str(data.get("t2i_mode"), "auto"),
             t2i_min_chars=_as_int(data.get("t2i_min_chars"), 150),
+            t2i_plain_min_chars=_as_int(data.get("t2i_plain_min_chars"), 350),
         )
         return options.clamped()
 
@@ -221,4 +225,5 @@ class ReplyOptions:
         self.active_reply_daily_limit = max(0, self.active_reply_daily_limit)
         self.active_reply_unanswered_seconds = max(3.0, self.active_reply_unanswered_seconds)
         self.t2i_min_chars = max(30, self.t2i_min_chars)
+        self.t2i_plain_min_chars = max(self.t2i_min_chars, self.t2i_plain_min_chars)
         return self

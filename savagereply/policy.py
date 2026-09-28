@@ -95,8 +95,26 @@ def is_structured_analysis(text: str) -> bool:
     if list_items >= 3 or kv_items >= 3:
         return True
 
-    if _HEADER_SECTION_RE.search(text) and (list_items >= 2 or kv_items >= 2):
-        return True
+_HEADER_RE = re.compile(r"(?:^|\n)#{1,4}\s+\S+")
+_BLOCKQUOTE_RE = re.compile(r"(?:^|\n)>\s+\S+")
 
+
+def has_markdown_structure(text: str) -> bool:
+    """检测文本是否具有实质性的 Markdown 排版结构（表格/代码/公式/列表/标题/引用块）。"""
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    if "```" in stripped:
+        return True
+    if is_markdown_table(stripped):
+        return True
+    if _BLOCK_MATH.search(stripped):
+        return True
+    if is_structured_analysis(stripped):
+        return True
+    if _HEADER_RE.search(stripped):
+        return True
+    if _BLOCKQUOTE_RE.search(stripped):
+        return True
     return False
 

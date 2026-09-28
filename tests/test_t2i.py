@@ -135,23 +135,24 @@ class TestT2IModule(unittest.TestCase):
     def test_should_render_as_image_conditions(self):
         default_options = ReplyOptions()
         self.assertEqual(default_options.t2i_min_chars, 150)
+        self.assertEqual(default_options.t2i_mode, "auto")
+        self.assertEqual(default_options.t2i_plain_min_chars, 350)
 
-        # 短闲聊文本（< 150 字，无关键词）：不触发
+        # 1. auto 模式下：短闲聊文本（< 350 字且无 Markdown 结构）：不触发长图，走拟人分段打字
         self.assertFalse(should_render_as_image("你好呀，今天天气真不错！", default_options))
-        self.assertFalse(should_render_as_image("这是一段普通的回答，字数没有达到一百五十个字。" * 3, default_options))
+        casual_chat = "这是一段很正常的日常闲聊与聊天安慰话语，虽然写得比较长，但是完全是口语自然叙述，没有任何标题或列表。" * 3  # 约 160 字
+        self.assertFalse(should_render_as_image(casual_chat, default_options))
 
-        # 大于等于 150 字的纯文本（没有任何关键词/无特殊 reason）：默认直接触发长图
-        long_plain_text = "这是一段详细的技术分析与问题解答说明文本。" * 8  # 168 字
-        self.assertGreaterEqual(len(long_plain_text), 150)
-        self.assertTrue(should_render_as_image(long_plain_text, default_options))
+        # 2. auto 模式下：超长篇大论纯文本（>= 350 字）：触发长图卡片
+        super_long_plain = "长篇大论科普知识：" + "今天我们来深入讨论一下人类意识的发展历史与哲学思考过程。" * 15  # 414 字
+        self.assertGreaterEqual(len(super_long_plain), 350)
+        self.assertTrue(should_render_as_image(super_long_plain, default_options))
 
-        # 开关关闭：即使字数超标也不触发
-        disabled_options = ReplyOptions(t2i_detailed_reply_enabled=False)
-        self.assertFalse(
-            should_render_as_image(long_plain_text, disabled_options)
-        )
+        # 3. auto 模式下：带有实质 Markdown 结构的排版（小标题/列表/代码/表格）：即使只有 80 字也转长图！
+        structured_short = "### 诊断报告\n- 运行状态：良好\n- 内存占用：偏低\n> 建议保持当前系统监控。"  # 约 60 字
+        self.assertTrue(should_render_as_image(structured_short, default_options))
 
-        # 结构化数据或表格：即使短于 150 字也触发长图渲染
+        # 表格与结构化数据无条件转长图
         self.assertTrue(
             should_render_as_image(
                 "| a | b |\n|---|---|\n| 1 | 2 |",
@@ -166,6 +167,18 @@ class TestT2IModule(unittest.TestCase):
                 decision_reason="structured_data",
             )
         )
+
+        # 4. always 模式（图文精装）：>= 150 字即便无结构也转长图
+        always_options = ReplyOptions(t2i_mode="always", t2i_min_chars=150)
+        self.assertTrue(should_render_as_image(casual_chat, always_options))
+
+        # 5. never 模式 / 开关关闭（纯真拟人）：任何情况绝不转长图
+        never_options = ReplyOptions(t2i_mode="never")
+        self.assertFalse(should_render_as_image(structured_short, never_options))
+        self.assertFalse(should_render_as_image(super_long_plain, never_options))
+
+        disabled_options = ReplyOptions(t2i_detailed_reply_enabled=False)
+        self.assertFalse(should_render_as_image(super_long_plain, disabled_options))
 
     def test_no_browser_fallback(self):
         options = ReplyOptions(t2i_detailed_reply_enabled=True)

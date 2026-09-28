@@ -25,9 +25,11 @@ class PresetsTest(unittest.TestCase):
     def test_supported_presets(self):
         self.assertIn("natural", SUPPORTED_PRESETS)
         self.assertIn("lively", SUPPORTED_PRESETS)
+        self.assertIn("visual", SUPPORTED_PRESETS)
+        self.assertIn("humanoid", SUPPORTED_PRESETS)
         self.assertIn("instant", SUPPORTED_PRESETS)
         self.assertIn("custom", SUPPORTED_PRESETS)
-        self.assertEqual(len(SUPPORTED_PRESETS), 4)
+        self.assertEqual(len(SUPPORTED_PRESETS), 6)
 
     def test_get_preset_defaults(self):
         natural = get_preset_defaults("natural")

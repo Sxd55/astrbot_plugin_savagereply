@@ -21,6 +21,8 @@ PRESET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "marker_enabled": True,
         "force_non_streaming": True,
         "active_reply_enabled": False,
+        "t2i_detailed_reply_enabled": True,
+        "t2i_mode": "auto",
     },
     "lively": {
         "delay_enabled": True,
@@ -30,6 +32,27 @@ PRESET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "active_reply_enabled": True,
         "active_reply_mode": "smart",
         "active_reply_unanswered_break": True,
+        "t2i_detailed_reply_enabled": True,
+        "t2i_mode": "auto",
+    },
+    "visual": {
+        "delay_enabled": True,
+        "typing_enabled": True,
+        "marker_enabled": True,
+        "force_non_streaming": True,
+        "active_reply_enabled": False,
+        "t2i_detailed_reply_enabled": True,
+        "t2i_mode": "always",
+        "t2i_min_chars": 150,
+    },
+    "humanoid": {
+        "delay_enabled": True,
+        "typing_enabled": True,
+        "marker_enabled": True,
+        "force_non_streaming": True,
+        "active_reply_enabled": False,
+        "t2i_detailed_reply_enabled": False,
+        "t2i_mode": "never",
     },
     "instant": {
         "delay_enabled": False,
@@ -38,13 +61,17 @@ PRESET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "force_non_streaming": True,
         "active_reply_enabled": False,
         "min_total_chars": 999999,
+        "t2i_detailed_reply_enabled": True,
+        "t2i_mode": "auto",
     },
     "custom": {},
 }
 
 PRESET_NAMES: dict[str, str] = {
-    "natural": "日常拟人（推荐平衡档）",
+    "natural": "日常拟人（推荐平衡档，智能自适应长图）",
     "lively": "群聊气氛组（真人群聊智能接话）",
+    "visual": "图文精装（长文与排版优先转卡片长图）",
+    "humanoid": "纯真拟人（彻底关闭长图，100%全文本打字）",
     "instant": "极速直答（单条秒回不分段）",
     "custom": "专家自定义（手动自由微调）",
 }
@@ -126,6 +153,18 @@ PRESET_METADATA: list[dict[str, Any]] = [
         "desc": "文本超过该字数才触发分段",
         "type": "int",
         "unit": "字",
+    },
+    {
+        "key": "t2i_detailed_reply_enabled",
+        "name": "长图开关",
+        "desc": "卡片长图渲染总开关",
+        "type": "bool",
+    },
+    {
+        "key": "t2i_mode",
+        "name": "长图模式",
+        "desc": "长图触发模式（auto/always/never）",
+        "type": "str",
     },
 ]
 

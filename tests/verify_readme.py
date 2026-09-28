@@ -57,6 +57,8 @@ LABEL = {
     "active_reply_groups": "生效群白名单",
     "t2i_detailed_reply_enabled": "详细长回复转卡片长图",
     "t2i_min_chars": "转卡片长图字数门槛",
+    "t2i_mode": "长图触发模式",
+    "t2i_plain_min_chars": "纯口语长文转长图门槛",
 }
 table = README.split("## 五、配置项")[1].split("\n---\n")[0]
 for key in sorted(SCHEMA):
@@ -86,6 +88,7 @@ pairs = [
     ("delay_per_char_seconds", "0.08"), ("delay_punct_bonus_seconds", "0.25"),
     ("delay_jitter", "0.2"), ("delay_max_seconds", "4.0"),
     ("delay_total_max_seconds", "10.0"), ("t2i_min_chars", "150"),
+    ("t2i_plain_min_chars", "350"),
 ]
 for key, expect in pairs:
     actual = str(SCHEMA[key]["default"])
