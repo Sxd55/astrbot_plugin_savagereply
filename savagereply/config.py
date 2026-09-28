@@ -129,6 +129,8 @@ class ReplyOptions:
     t2i_mode: str = "auto"
     t2i_min_chars: int = 150
     t2i_plain_min_chars: int = 350
+    enhance_quoted_image_input: bool = True
+    optimize_image_caption: bool = True
 
     @classmethod
     def from_config(cls, raw: Any) -> ReplyOptions:
@@ -200,6 +202,8 @@ class ReplyOptions:
             t2i_mode=_as_str(data.get("t2i_mode"), "auto"),
             t2i_min_chars=_as_int(data.get("t2i_min_chars"), 150),
             t2i_plain_min_chars=_as_int(data.get("t2i_plain_min_chars"), 350),
+            enhance_quoted_image_input=_as_bool(data.get("enhance_quoted_image_input"), True),
+            optimize_image_caption=_as_bool(data.get("optimize_image_caption"), True),
         )
         return options.clamped()
 

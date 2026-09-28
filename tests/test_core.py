@@ -443,6 +443,17 @@ class VerifyTest(unittest.TestCase):
         )
         self.assertFalse(any(risk.kind == "unmentioned_url" for risk in risks))
 
+    def test_unmentioned_url_excludes_parentheses(self):
+        risks = scan_risks(
+            "新闻链接：[新浪网](https://news.sina.com.cn/doc-123.shtml) 以及官网(https://www.kyland.com.cn/)",
+            opts(verify_enabled=True),
+            user_text="查新闻",
+        )
+        url_risks = [r for r in risks if r.kind == "unmentioned_url"]
+        self.assertTrue(len(url_risks) > 0)
+        self.assertFalse(url_risks[0].snippet.endswith(")"))
+        self.assertEqual(url_risks[0].snippet, "https://news.sina.com.cn/doc-123.shtml")
+
     def test_clean_text_no_risk(self):
         self.assertEqual(scan_risks("今天天气不错，出去走走？", opts(verify_enabled=True)), [])
 

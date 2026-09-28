@@ -15,9 +15,17 @@ from urllib.parse import urlparse
 from .config import ReplyOptions
 
 _VAGUE_SOURCE = re.compile(r"(据|根据)[^，。！？；\n]{0,12}(统计|调查|研究|报告|数据显示)")
-_URL = re.compile(r"https?://[^\s。，、；！？\u3000（）【】《》「」]+")
+_URL = re.compile(r"https?://[^\s。，、；！？\u3000（）【】《》「」()<>\'\"]+")
+_TRAILING_PUNCT = ".,;:!?。，、；！？)\"'”’）】》」"
 MAX_RISKS = 3
 SNIPPET_PAD = 12
+
+
+def _clean_url(raw: str) -> str:
+    url = raw.strip()
+    while url and url[-1] in _TRAILING_PUNCT:
+        url = url[:-1]
+    return url
 
 
 @dataclass
@@ -43,7 +51,9 @@ def scan_risks(text: str, options: ReplyOptions, user_text: str = "") -> list[Ri
         risks.append(Risk("vague_source", match.group(0)))
 
     for match in _URL.finditer(text):
-        url = match.group(0)
+        url = _clean_url(match.group(0))
+        if not url:
+            continue
         domain = _domain(url)
         if domain and domain not in (user_text or ""):
             risks.append(Risk("unmentioned_url", url))

@@ -59,6 +59,8 @@ LABEL = {
     "t2i_min_chars": "转卡片长图字数门槛",
     "t2i_mode": "长图触发模式",
     "t2i_plain_min_chars": "纯口语长文转长图门槛",
+    "enhance_quoted_image_input": "引用图片视觉补齐",
+    "optimize_image_caption": "智能带问题图像转述",
 }
 table = README.split("## 五、配置项")[1].split("\n---\n")[0]
 for key in sorted(SCHEMA):
