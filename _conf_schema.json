@@ -319,5 +319,18 @@
     "type": "int",
     "hint": "auto 模式下，当回复无任何 Markdown 排版结构时，达到此字数（默认 350 字）才会转卡片长图，避免日常长闲聊误触发长图。",
     "default": 350
+  },
+  "enhance_quoted_image_input": {
+    "description": "【多模态】引用图片视觉输入补齐",
+    "type": "bool",
+    "hint": "当用户回复或引用带有图片的历史消息时，自动为大模型补齐该图片的视觉输入，并带提示说明（强烈推荐开启）。",
+    "default": true
+  },
+  "optimize_image_caption": {
+    "description": "【多模态】智能带问题图像转述",
+    "type": "bool",
+    "hint": "让图像转述模型带着用户当前的提问看图，精准捕捉与用户问题相关的关键事实与细节，彻底杜绝盲目看图（强烈推荐开启）。",
+    "default": true
   }
 }
+

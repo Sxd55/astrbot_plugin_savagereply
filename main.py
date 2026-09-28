@@ -46,6 +46,10 @@ try:
         render_markdown_to_image,
         should_render_as_image,
     )
+    from .savagereply.multimodal import (
+        ImageCaptionOptimizer,
+        optimize_quoted_image_input,
+    )
 except ImportError:
     from savagereply import PLUGIN_NAME, __version__
     from savagereply.config import (
@@ -79,6 +83,10 @@ except ImportError:
         render_markdown_to_image,
         should_render_as_image,
     )
+    from savagereply.multimodal import (
+        ImageCaptionOptimizer,
+        optimize_quoted_image_input,
+    )
 
 MIN_PRIORITY = -100000000000000000
 
@@ -99,6 +107,8 @@ BOOL_CONFIG_KEYS = (
     "active_reply_enabled",
     "active_reply_unanswered_break",
     "t2i_detailed_reply_enabled",
+    "enhance_quoted_image_input",
+    "optimize_image_caption",
 )
 
 INT_CONFIG_KEYS = (
@@ -167,6 +177,7 @@ class SavageReplyPlugin(Star):
         super().__init__(context)
         self.config = config or {}
         self.gate = ActiveGate()
+        self.caption_optimizer = ImageCaptionOptimizer(logger=logger)
         self._register_pages()
         logger.info("Savage's Reply loaded v%s", __version__)
 
@@ -224,6 +235,8 @@ class SavageReplyPlugin(Star):
             "active_reply_groups": list(options.active_reply_groups),
             "t2i_detailed_reply_enabled": options.t2i_detailed_reply_enabled,
             "t2i_min_chars": options.t2i_min_chars,
+            "enhance_quoted_image_input": _as_bool(self.config.get("enhance_quoted_image_input"), True),
+            "optimize_image_caption": _as_bool(self.config.get("optimize_image_caption"), True),
         }
 
     async def page_config(self):
@@ -250,6 +263,13 @@ class SavageReplyPlugin(Star):
 
     async def initialize(self):
         self._warn_builtin_segmented()
+        opt_caption = resolve_effective_config(self.config, "optimize_image_caption", True)
+        self.caption_optimizer.enabled = bool(opt_caption)
+        if opt_caption:
+            self.caption_optimizer.install()
+
+    async def terminate(self):
+        self.caption_optimizer.terminate()
 
     def _builtin_segmented_enabled(self) -> bool:
         try:
@@ -458,7 +478,16 @@ class SavageReplyPlugin(Star):
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
-        """每轮临时注入输出规范，让模型可以用 [[next]] 自己决定断句位置。"""
+        """每轮临时注入输出规范，并在引用带图消息时补齐视觉输入。"""
+        # 1. 优化引用图片视觉输入补齐
+        try:
+            enhance_quoted = resolve_effective_config(self.config, "enhance_quoted_image_input", True)
+            if enhance_quoted:
+                await optimize_quoted_image_input(event, req, logger=logger)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Savage's Reply optimize_quoted_image_input skipped: %s", exc)
+
+        # 2. 注入 [[next]] 输出规范
         try:
             options = ReplyOptions.from_config(self.config)
             if not options.enabled or not options.marker_enabled:

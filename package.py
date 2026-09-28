@@ -20,6 +20,7 @@ MANDATORY_ENTRIES = (
     "astrbot_plugin_savagereply/_conf_schema.json",
     "astrbot_plugin_savagereply/assets/fonts/NotoSansSC-VF.ttf",
     "astrbot_plugin_savagereply/savagereply/t2i.py",
+    "astrbot_plugin_savagereply/savagereply/multimodal.py",
 )
 
 # 排除目录

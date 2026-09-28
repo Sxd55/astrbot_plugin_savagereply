@@ -23,6 +23,8 @@ PRESET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "active_reply_enabled": False,
         "t2i_detailed_reply_enabled": True,
         "t2i_mode": "auto",
+        "enhance_quoted_image_input": True,
+        "optimize_image_caption": True,
     },
     "lively": {
         "delay_enabled": True,
@@ -34,6 +36,8 @@ PRESET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "active_reply_unanswered_break": True,
         "t2i_detailed_reply_enabled": True,
         "t2i_mode": "auto",
+        "enhance_quoted_image_input": True,
+        "optimize_image_caption": True,
     },
     "visual": {
         "delay_enabled": True,
@@ -44,6 +48,8 @@ PRESET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "t2i_detailed_reply_enabled": True,
         "t2i_mode": "always",
         "t2i_min_chars": 150,
+        "enhance_quoted_image_input": True,
+        "optimize_image_caption": True,
     },
     "humanoid": {
         "delay_enabled": True,
@@ -53,6 +59,8 @@ PRESET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "active_reply_enabled": False,
         "t2i_detailed_reply_enabled": False,
         "t2i_mode": "never",
+        "enhance_quoted_image_input": True,
+        "optimize_image_caption": True,
     },
     "instant": {
         "delay_enabled": False,
@@ -63,6 +71,8 @@ PRESET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "min_total_chars": 999999,
         "t2i_detailed_reply_enabled": True,
         "t2i_mode": "auto",
+        "enhance_quoted_image_input": True,
+        "optimize_image_caption": True,
     },
     "custom": {},
 }
@@ -165,6 +175,18 @@ PRESET_METADATA: list[dict[str, Any]] = [
         "name": "长图模式",
         "desc": "长图触发模式（auto/always/never）",
         "type": "str",
+    },
+    {
+        "key": "enhance_quoted_image_input",
+        "name": "引用图片视觉输入补齐",
+        "desc": "引用带图消息时自动补全视觉输入并注入提示",
+        "type": "bool",
+    },
+    {
+        "key": "optimize_image_caption",
+        "name": "智能带问题图像转述",
+        "desc": "转述模型结合当前提问看图，精准捕捉关键细节",
+        "type": "bool",
     },
 ]
 
